@@ -1,4 +1,4 @@
-# GD FPS Core — v0.2.0
+# GD FPS Core — v0.2.1
 
 Target: Geometry Dash Windows 2.2081 + Geode.
 
@@ -41,3 +41,13 @@ Alternatively, configure with CMake after setting `GEODE_SDK` to the SDK directo
 4. Compare frame-time distributions before and after each change.
 
 No performance gain is claimed until measured in-game. This source package has not been compiled against your local Geode SDK or tested in Geometry Dash in this environment.
+
+
+## Build compatibility
+
+This source package pins the Geode SDK requirement to `5.11.2` in `mod.json`, matching the SDK tag successfully installed in the supplied GitHub Actions log.
+
+
+## Important: repository root
+
+Extract this archive directly into the root of your GitHub repository and overwrite existing files. The `mod.json` in the repository root must contain `"geode": "5.11.2"`. Do not leave these files nested only inside a `GEODE_FPS_CORE/` subfolder, because the build action reads `./mod.json`.

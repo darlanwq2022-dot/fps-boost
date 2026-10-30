@@ -1,11 +1,11 @@
 {
-  "geode": "$GEODE_VERSION",
+  "geode": "5.11.2",
   "gd": {
     "win": "2.2081"
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.2.0",
+  "version": "v0.2.1",
   "developer": "GD FPS Core contributors",
   "description": "Low-overhead frame-time profiler and safe performance optimization foundation for Geometry Dash 2.2081."
 }

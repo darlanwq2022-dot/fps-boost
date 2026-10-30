@@ -70,7 +70,7 @@ class $modify(GDFPSCoreDirector, CCDirector) {
 };
 
 $on_mod(Loaded) {
-    log::info("GD FPS Core v0.2.0 loaded.");
+    log::info("GD FPS Core v0.2.1 loaded.");
     log::info("Frame profiler active: CPU-side CCDirector::drawScene duration, reported every 120 frames.");
     log::info("No gameplay, physics, collision, input, particle, or Wave Trail behavior is modified.");
 }
