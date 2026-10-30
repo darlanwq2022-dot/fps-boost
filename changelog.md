@@ -1,18 +1,21 @@
 # Changelog
 
-## v0.6.0 — ULTRA Load Shedding
-- Blocks GameObject particle-emitter creation using the native `m_hasNoParticles` guard.
-- Skips attaching player particle systems when particle suppression is enabled.
-- Suppresses particle-trigger visuals and camera shake.
-- Skips per-frame updates only for hidden decoration-only GameObjects that are not triggers.
-- Adds player burst and flash/circle suppression hooks.
-- Keeps native Extra LDM filtering of High Detail objects.
-- Keeps the Wave Trail visible; aggressive point sampling remains, but renderer refresh defaults to 1 for a fluid trail.
-- Does not bypass gameplay-object updates, triggers, collision checks, physics or input handling.
+## v0.7.1 — MAX ULTRA+
+- Added a direct skip for `GJBaseGameLayer::updateParticles(float)` while global particle suppression is enabled, cutting the layer-level per-frame particle update path.
+- Added an opt-in setting (enabled by default) to skip cosmetic `GJBaseGameLayer::updateShaderLayer(float)` updates.
+- Updated startup diagnostics and mod metadata for the new visual paths.
+- Audited the new hook signatures against the published Windows 2.2081 bindings.
+- Clarified that decoration-only objects are hidden but remain allocated and are not claimed to have their `GameObject::update` calls skipped.
 
-## Limitations
-- Decoration objects remain allocated; this is not a memory-freeing object remover.
-- High Detail filtering only removes objects marked High Detail by the level author.
-- A level with extremely large numbers of active gameplay objects can still be CPU- or memory-bound. No mod can guarantee zero lag for one million active objects while preserving the game's full simulation.
-- Wave Trail points are still stored as engine PointNode objects; reducing samples lowers their count, but cannot make the trail consume less than 1 KB in all cases.
-- This package is source-only and has not been compiled in this environment. Build it with Geode SDK 5.11.2 / GitHub Actions before installing.
+## v0.7.0 — MAX ULTRA
+- Reconnected supported PlayerObject visual hooks using Windows 2.2081 non-inline methods.
+- Suppressed the hookable GJBaseGameLayer particle-trigger visual path and prevented player/object particle emitters from attaching; stopped and unscheduled remaining particle systems.
+- Suppressed supported bump, death, spawn, completion, Spider dash, ghost, transition-circle, swing-fire, and non-Wave dart-streak visuals.
+- Avoided glow-color updates when object glows are disabled.
+- Used native Extra LDM and hid decoration-only objects during gameplay without touching triggers or editor previews.
+- Kept the Wave Trail active with point decimation, a hard point cap and reduced renderer refresh frequency.
+- Kept gameplay update, trigger execution, collision, physics and input loops intact.
+
+## v0.6.1
+- Removed confirmed inline-only hooks that failed compilation.
+- Retained native Extra LDM, decoration suppression, particle suppression and Wave Trail optimization.

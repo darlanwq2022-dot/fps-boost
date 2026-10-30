@@ -1,28 +1,41 @@
-# GD FPS Core v0.6.0 — ULTRA Load Shedding
+# GD FPS Core v0.7.1 — MAX ULTRA+
 
-Target: Geometry Dash 2.2081 / Geode 5.11.2 / Windows.
+**Target:** Geometry Dash 2.2081 / Geode 5.11.2 / Windows.
 
-## What this build actually does
+This is an aggressive visual-load reduction profile. It intentionally sacrifices particle effects, glows, shine, secondary player effects, camera shake, shader-layer animation and decorative rendering while preserving the Wave Trail.
 
-- Prevents GameObject particle emitters from being created when particle suppression is enabled.
-- Skips attaching player particle systems to the active scene.
-- Suppresses particle-trigger visuals, camera shake, object glows, shine, trigger flashes, ring pulses, player burst/flash/circle/death/spawn/dash/ghost visuals and non-Wave trails.
-- Forces native Low Detail + Extra LDM in gameplay and passes `lowDetail=true` while parsing level objects. This can filter objects marked High Detail before they enter the live object list.
-- Hides editor-flagged decoration objects and optionally skips their `GameObject::update`, provided they are not triggers.
-- Keeps the Wave Trail (`PlayerObject::m_waveTrail`, a `HardStreak`) enabled. It keeps fewer points by spacing/sampling and preserves sharper direction changes. Renderer refresh is unthrottled by default for fluid appearance.
+## v0.7.1 additions
 
-## What it deliberately does not do
+- Hooks `GJBaseGameLayer::updateParticles(float)` and skips the central per-frame particle-update path when **Disable EVERY CCParticleSystem effect** is enabled.
+- Adds `Disable shader-layer updates`, which skips `GJBaseGameLayer::updateShaderLayer(float)` by default. This removes cosmetic shader animation work; shader-driven background effects may stop animating.
+- Retains the v0.7.0 particle creation guards, Cocos particle stopping/unscheduling, player-effect suppression, object glow/shine suppression and native Extra LDM request.
+- Keeps the Wave Trail active, with a bounded point array, distance/sample decimation, corner preservation and reduced geometry refresh frequency.
 
-It does not remove arbitrary active gameplay objects, skip `GJBaseGameLayer::update`, bypass trigger execution, collision checking, player physics or input handling. Doing so can change level behavior or make levels impossible to complete.
+## Aggressive visual reductions
 
-A level containing one million objects is not guaranteed to run without lag. High Detail and decoration-only content can be cut down substantially, but live gameplay objects still need memory, updates and collision/trigger processing. The mod cannot safely promise zero lag at any object count.
+- Suppresses the hookable `GJBaseGameLayer::spawnParticleTrigger(int, ...)` visual entry point.
+- Skips `GJBaseGameLayer::updateParticles(float)` while global particle suppression is enabled.
+- Prevents `GameObject` particle emitter creation using the native `m_hasNoParticles` guard.
+- Prevents player particle attachment before emitters are created.
+- Stops, hides and unschedules remaining `CCParticleSystem` nodes.
+- Suppresses supported player visuals: glow refresh, swing fire, non-Wave dart streaks, bump/death/spawn/completion effects, Spider dash visuals, ghost visuals and transition circles.
+- Suppresses object glows and shine animations, ring pulses, trigger flashes, gravity-transition visuals, scene glitter and camera shake.
+- Skips shader-layer animation updates when the new setting is enabled.
+- Requests Geometry Dash's native Low Detail + Extra LDM path for gameplay object parsing.
+- Hides decoration-only objects during gameplay. Trigger objects and editor previews are excluded.
 
-The Wave Trail is not a sub-1-KB object: the game stores its geometry as `PointNode` entries in a `CCArray`. Sampling reduces the number of points, but the retained history still consumes memory proportional to its length. The engine already prunes old points as the trail moves.
+## Wave Trail preservation
 
-## Build
+The Wave Trail is a `HardStreak`, not a `CCParticleSystem`, and is deliberately not disabled. Its sample stream is decimated, nearby points are dropped, sharp turns are preferentially retained, the retained point array is capped (default: 96), and geometry refresh is performed every second scheduled update by default. These settings trade some smoothness/length for lower CPU and memory overhead. The trail is not sub-1-KB: Cocos point-array entries and draw geometry have object/allocation overhead beyond the raw coordinates.
 
-Extract the archive directly into the root of the GitHub repository, replacing older source files. Keep `mod.json` and `CMakeLists.txt` at the repository root. Build using Geode SDK 5.11.2. This archive contains source only and has not been compiled here.
+## Gameplay behavior deliberately preserved
 
-## First test
+The mod does not bypass `GJBaseGameLayer::update`, player update/physics, collision checks, trigger dispatch, object activation, or input handling. `GameObject::update` is inline in the Windows 2.2081 bindings and is not hooked. Hiding decorative objects reduces rendering/overdraw, but those objects remain allocated in level arrays and may still contribute to object traversal or other engine overhead.
 
-Use an object-heavy level with the ULTRA defaults, then compare with the same level with `Skip hidden decoration updates` and `Force native Ultra LDM` turned off one at a time. Keep the frame profiler off during normal gameplay; enable it only for tests. Compare identical sections and settings to avoid misleading results.
+No mod can guarantee zero lag for a level containing one million objects. Even when visual work is removed, parsing, RAM use, object-list traversal, active gameplay-object processing, triggers, collisions, and engine internals remain. This release aims to reduce avoidable visual CPU/GPU work without changing gameplay timing or physics.
+
+## Build and validation
+
+Build against Geode SDK 5.11.2 and Windows GD 2.2081 bindings. The v0.7.1 hooks added here (`GJBaseGameLayer::updateParticles` and `updateShaderLayer`) have non-inline Windows 2.2081 entries in the official bindings. The previously reported inline-only methods remain excluded: `GJBaseGameLayer::spawnParticleTrigger(SpawnParticleGameObject*)`, `PlayerObject::flashPlayer`, `PlayerObject::playBurstEffect`, and `PlayerObject::spawnCircle2`. `GameObject::update` is also left unhooked because its Windows binding is inline.
+
+The project metadata and archive structure have been validated, and hook signatures were checked against the published Windows 2.2081 bindings. **This environment does not contain the Geode SDK/toolchain or Geometry Dash executable, so this archive has not been compiled or runtime-benchmarked here.**

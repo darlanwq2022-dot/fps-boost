@@ -25,6 +25,7 @@ namespace {
     // Extreme profile: remove secondary visuals by default. HardStreak is a
     // separate trail renderer and is intentionally never disabled here.
     bool g_disableAllParticles = true;
+    bool g_disableShaderUpdates = true;
     bool g_disableObjectGlow = true;
     bool g_disableObjectParticles = true;
     bool g_disablePlayerParticles = true;
@@ -45,15 +46,15 @@ namespace {
     bool g_disablePlayerSpawn = true;
     bool g_disableHighDetailObjects = true;
     bool g_hideDecorationObjects = true;
-    bool g_skipDecorationUpdates = true;
     bool g_disableCameraShake = true;
     bool g_disablePlayerBurst = true;
 
     // Wave Trail remains visible. This spacing only drops very close samples.
-    float g_wavePointSpacing = 0.18f;
+    float g_wavePointSpacing = 0.35f;
     int g_waveSampleStep = 4;
-    int g_waveRenderStep = 1;
-    float g_waveMaxGap = 6.0f;
+    int g_waveRenderStep = 2;
+    float g_waveMaxGap = 8.0f;
+    std::size_t g_waveMaxPoints = 96;
     std::uint64_t g_wavePointsSkipped = 0;
     std::uint64_t g_waveRenderUpdatesSkipped = 0;
 
@@ -212,13 +213,12 @@ namespace {
 
     void stopParticle(cocos2d::CCParticleSystem* particle) {
         if (!particle) return;
-        if (particle->isVisible()) {
-            particle->stopSystem();
-            particle->setVisible(false);
-        } else {
-            // stopSystem is idempotent and prevents later emission even when hidden.
-            particle->stopSystem();
-        }
+        // All callers use this only for optional visual emitters. Stop emission,
+        // hide the node so the scene graph skips drawing it, and remove its
+        // scheduled per-frame update instead of leaving a dead system ticking.
+        particle->stopSystem();
+        if (particle->isVisible()) particle->setVisible(false);
+        particle->unscheduleUpdate();
     }
 
     void hideNode(cocos2d::CCNode* node) {
@@ -228,7 +228,11 @@ namespace {
     }
 
     bool shouldHideLevelObject(GameObject* object) {
-        if (!object) return false;
+        if (!object || object->m_isTrigger) return false;
+        auto* manager = GameManager::get();
+        // Keep editor previews and menus untouched; apply this profile only
+        // while an actual PlayLayer exists.
+        if (!manager || !manager->getPlayLayer()) return false;
         return (g_disableHighDetailObjects && object->m_isHighDetail) ||
             (g_hideDecorationObjects && (object->m_isDecoration || object->m_isDecoration2));
     }
@@ -256,6 +260,12 @@ namespace {
             stopParticle(player->m_landParticles1);
         }
 
+        if (g_disablePlayerBurst) {
+            stopParticle(player->m_robotBurstParticles);
+            stopParticle(player->m_swingBurstParticles1);
+            stopParticle(player->m_swingBurstParticles2);
+        }
+
         if (g_disablePlayerGlow) {
             hideNode(player->m_iconGlow);
             hideNode(player->m_vehicleGlow);
@@ -279,6 +289,7 @@ namespace {
     void loadSettings() {
         auto* mod = Mod::get();
         g_disableAllParticles = mod->getSettingValue<bool>("disable-all-particles");
+        g_disableShaderUpdates = mod->getSettingValue<bool>("disable-shader-updates");
         g_disableObjectGlow = mod->getSettingValue<bool>("disable-object-glow");
         g_disableObjectParticles = mod->getSettingValue<bool>("disable-object-particles");
         g_disablePlayerParticles = mod->getSettingValue<bool>("disable-player-particles");
@@ -299,7 +310,6 @@ namespace {
         g_disablePlayerSpawn = mod->getSettingValue<bool>("disable-player-spawn");
         g_disableHighDetailObjects = mod->getSettingValue<bool>("disable-high-detail-objects");
         g_hideDecorationObjects = mod->getSettingValue<bool>("hide-decoration-objects");
-        g_skipDecorationUpdates = mod->getSettingValue<bool>("skip-decoration-updates");
         g_disableCameraShake = mod->getSettingValue<bool>("disable-camera-shake");
         g_disablePlayerBurst = mod->getSettingValue<bool>("disable-player-burst");
         g_wavePointSpacing = static_cast<float>(std::clamp<double>(
@@ -313,6 +323,9 @@ namespace {
         ));
         g_waveMaxGap = static_cast<float>(std::clamp<double>(
             mod->getSettingValue<double>("wave-trail-max-gap"), 1.0, 12.0
+        ));
+        g_waveMaxPoints = static_cast<std::size_t>(std::clamp<int64_t>(
+            mod->getSettingValue<int64_t>("wave-trail-max-points"), 16, 256
         ));
 
         g_frameMonitorEnabled = mod->getSettingValue<bool>("frame-monitor");
@@ -365,17 +378,36 @@ class $modify(GDFPSCoreGameLayer, GJBaseGameLayer) {
         }
     }
 
-    void spawnParticleTrigger(SpawnParticleGameObject* object) {
+    // Particle-trigger bookkeeping is visual-only. The trigger itself still
+    // executes; this skips the per-frame emitter update path when particles are off.
+    void updateParticles(float dt) {
         if (!g_disableAllParticles) {
-            GJBaseGameLayer::spawnParticleTrigger(object);
+            GJBaseGameLayer::updateParticles(dt);
         }
     }
 
-    void spawnParticleTrigger(int particleID, cocos2d::CCPoint position, float rotation, float scale) {
+    // Shader-layer animation is cosmetic and independent of player physics,
+    // collision, trigger dispatch, and input handling.
+    void updateShaderLayer(float dt) {
+        if (!g_disableShaderUpdates) {
+            GJBaseGameLayer::updateShaderLayer(dt);
+        }
+    }
+
+    // The object-pointer overload is inline on Windows and cannot be hooked.
+    // This non-inline overload is the safe visual-trigger entry point: it has
+    // no return value, so suppressing it cannot leave callers with a null node.
+    void spawnParticleTrigger(
+        int particleID,
+        cocos2d::CCPoint position,
+        float rotation,
+        float scale
+    ) {
         if (!g_disableAllParticles) {
             GJBaseGameLayer::spawnParticleTrigger(particleID, position, rotation, scale);
         }
     }
+
 };
 
 class $modify(GDFPSCorePlayerObject, PlayerObject) {
@@ -383,23 +415,11 @@ class $modify(GDFPSCorePlayerObject, PlayerObject) {
         bool visualProfileApplied = false;
     };
 
+    // Stop player emitters before they are attached to the scene.
+    // addAllParticles is a real Win 2.2081 entry point (not inline).
     void addAllParticles() {
         if (g_disableAllParticles || g_disablePlayerParticles) return;
         PlayerObject::addAllParticles();
-    }
-
-    void playBurstEffect() {
-        if (!g_disablePlayerBurst) PlayerObject::playBurstEffect();
-    }
-
-    void flashPlayer(float flashDuration, float flashDelay, cocos2d::ccColor3B mainColor, cocos2d::ccColor3B secondColor) {
-        if (!g_disablePlayerImpact) {
-            PlayerObject::flashPlayer(flashDuration, flashDelay, mainColor, secondColor);
-        }
-    }
-
-    void spawnCircle2() {
-        if (!g_disablePlayerCircleEffects) PlayerObject::spawnCircle2();
     }
 
     void update(float dt) {
@@ -424,11 +444,21 @@ class $modify(GDFPSCorePlayerObject, PlayerObject) {
     }
 
     void updateGlowColor() {
-        PlayerObject::updateGlowColor();
         if (g_disablePlayerGlow) {
             hideNode(m_iconGlow);
             hideNode(m_vehicleGlow);
+            return;
         }
+        PlayerObject::updateGlowColor();
+    }
+
+    void updatePlayerGlow() {
+        if (g_disablePlayerGlow) {
+            hideNode(m_iconGlow);
+            hideNode(m_vehicleGlow);
+            return;
+        }
+        PlayerObject::updatePlayerGlow();
     }
 
     void updateSwingFire() {
@@ -436,39 +466,29 @@ class $modify(GDFPSCorePlayerObject, PlayerObject) {
     }
 
     void createFadeOutDartStreak() {
-        if (!g_disableNonWaveTrail) PlayerObject::createFadeOutDartStreak();
-    }
-
-    void playSpiderDashEffect(cocos2d::CCPoint from, cocos2d::CCPoint to) {
-        if (!g_disableSpiderDashVisual) {
-            PlayerObject::playSpiderDashEffect(from, to);
+        if (!g_disableNonWaveTrail) {
+            PlayerObject::createFadeOutDartStreak();
         }
     }
-
 
     void playBumpEffect(int objectType, GameObject* object) {
         if (!g_disablePlayerImpact) PlayerObject::playBumpEffect(objectType, object);
     }
 
-
     void playCompleteEffect(bool noEffects, bool instant) {
         if (!g_disablePlayerCompletion) PlayerObject::playCompleteEffect(noEffects, instant);
-    }
-
-    void playSpawnEffect() {
-        if (!g_disablePlayerSpawn) PlayerObject::playSpawnEffect();
     }
 
     void playDeathEffect() {
         if (!g_disableDeathEffect) PlayerObject::playDeathEffect();
     }
 
-    void activateStreak() {
-        if (g_disableNonWaveTrail) {
-            PlayerObject::deactivateStreak(true);
-            return;
-        }
-        PlayerObject::activateStreak();
+    void playSpawnEffect() {
+        if (!g_disablePlayerSpawn) PlayerObject::playSpawnEffect();
+    }
+
+    void playSpiderDashEffect(cocos2d::CCPoint from, cocos2d::CCPoint to) {
+        if (!g_disableSpiderDashVisual) PlayerObject::playSpiderDashEffect(from, to);
     }
 
     void toggleGhostEffect(GhostType type) {
@@ -482,7 +502,6 @@ class $modify(GDFPSCorePlayerObject, PlayerObject) {
     void spawnCircle() {
         if (!g_disablePlayerCircleEffects) PlayerObject::spawnCircle();
     }
-
 
     void spawnDualCircle() {
         if (!g_disablePlayerCircleEffects) PlayerObject::spawnDualCircle();
@@ -507,6 +526,9 @@ class $modify(GDFPSCoreParticleSystem, cocos2d::CCParticleSystem) {
             if (!m_fields->suppressionApplied) {
                 stopSystem();
                 if (isVisible()) setVisible(false);
+                // Particle systems are purely visual. Remove their scheduled
+                // per-frame update instead of waking up just to return early.
+                unscheduleUpdate();
                 m_fields->suppressionApplied = true;
             }
             return;
@@ -539,15 +561,6 @@ class $modify(GDFPSCoreGameObject, GameObject) {
             return nullptr;
         }
         return GameObject::createAndAddParticle(objectType, plistName, tag, positionType);
-    }
-
-    void update(float dt) {
-        // Decorative-only sprites are hidden by this profile. Skip their
-        // per-frame GameObject update, but never skip trigger objects.
-        if (g_skipDecorationUpdates && !m_isTrigger && (m_isDecoration || m_isDecoration2)) {
-            return;
-        }
-        GameObject::update(dt);
     }
 
     static GameObject* objectFromVector(
@@ -601,8 +614,11 @@ class $modify(GDFPSCoreGameObject, GameObject) {
     }
 
     void setGlowColor(cocos2d::ccColor3B const& color) {
+        if (g_disableObjectGlow) {
+            hideNode(m_glowSprite);
+            return;
+        }
         GameObject::setGlowColor(color);
-        if (g_disableObjectGlow) hideNode(m_glowSprite);
     }
 
     void claimParticle() {
@@ -655,6 +671,12 @@ class $modify(GDFPSCoreHardStreak, HardStreak) {
                 }
             }
             HardStreak::addPoint(p);
+            if (m_pointArray) {
+                const auto maxPoints = static_cast<unsigned int>(g_waveMaxPoints);
+                if (m_pointArray->count() > maxPoints) {
+                    m_pointArray->removeObjectAtIndex(0);
+                }
+            }
             m_fields->lastKeptPoint = p;
             m_fields->hasLastKeptPoint = true;
             m_fields->samplesSinceKept = 0;
@@ -754,10 +776,10 @@ class $modify(GDFPSCoreEffectObject, EffectGameObject) {
 
 $on_mod(Loaded) {
     loadSettings();
-    log::info("GD FPS Core v0.6.0 loaded.");
-    log::info("ULTRA profile: all particle emitters/triggers, object glows, camera shake and secondary player visuals are suppressed by default.");
-    log::info("Object particle systems are blocked before creation; player particle systems are not attached to the scene.");
-    log::info("Native Extra LDM filters High Detail objects; hidden decoration-only objects can also skip their own update.");
-    log::info("Wave Trail stays enabled. Sample reduction is on, while renderer refresh remains unthrottled by default.");
-    log::info("Gameplay update, trigger execution, collision, physics and input loops are preserved. A level with huge amounts of active gameplay objects can still be CPU/memory limited.");
+    log::info("GD FPS Core v0.7.1 loaded.");
+    log::info("ULTRA profile: particle creation, layer-level particle updates, shader-layer animation, and supported player/object secondary visuals are suppressed through verified Windows 2.2081 hooks.");
+    log::info("Object particle systems are blocked before creation; remaining particle systems are stopped by the particle-system update hook.");
+    log::info("Native Extra LDM filters High Detail objects before runtime-list insertion; gameplay decorations are hidden without touching trigger objects.");
+    log::info("Wave Trail stays enabled with adaptive point decimation, a hard point cap, and reduced renderer refresh frequency.");
+    log::info("Gameplay update, trigger execution, collision, physics and input loops are preserved. Active gameplay objects still require CPU/memory even when secondary visuals are removed.");
 }

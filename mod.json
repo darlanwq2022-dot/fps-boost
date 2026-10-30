@@ -5,9 +5,9 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.6.0",
+  "version": "v0.7.1",
   "developer": "GD FPS Core contributors",
-  "description": "ULTRA load-shedding profile: prevents particle emitter creation, filters High Detail objects through native LDM, skips updates for hidden decoration-only objects, suppresses secondary visuals, and keeps the Wave Trail visible with adaptive point reduction.",
+  "description": "MAXIMUM visual-load reduction for Geometry Dash 2.2081: suppresses particle creation and per-frame updates, shader-layer animation, supported trigger/player/object effects, forces native Extra LDM, hides gameplay decorations, and keeps the Wave Trail visible with bounded point history and reduced geometry refresh.",
   "settings": {
     "perf-header": {
       "type": "title",
@@ -57,12 +57,19 @@
     "visual-header": {
       "type": "title",
       "name": "EXTREME VISUAL REDUCTION",
-      "description": "ULTRA profile defaults: remove all practical secondary effects, avoid allocating particle emitters, avoid adding player particle systems to the scene, filter High Detail objects through native Extra LDM, hide decoration-only objects and skip their per-frame updates. Wave Trail remains visible."
+      "description": "MAX ULTRA profile: suppress supported particle triggers and emitters, stop/unschedule remaining particle systems, remove player/object secondary visuals, force native Extra LDM, and hide gameplay decorations. Gameplay physics, triggers, collision and inputs remain active. The Wave Trail is kept but its stored geometry is simplified and bounded."
     },
     "disable-all-particles": {
       "type": "bool",
       "name": "Disable EVERY CCParticleSystem effect",
-      "description": "Suppress all particle trigger visuals and stop any remaining Cocos particle systems. Object emitters are prevented before creation and player particle systems are not attached. The Wave Trail uses HardStreak and is kept.",
+      "description": "Suppresses the supported non-inline GJBaseGameLayer particle-trigger entry point, blocks GameObject and PlayerObject emitters, and stops/unschedules remaining Cocos particle systems. The Wave Trail uses HardStreak and is kept.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-shader-updates": {
+      "type": "bool",
+      "name": "Disable shader-layer updates",
+      "description": "Skips cosmetic GJBaseGameLayer shader-layer animation updates. It does not change player physics, collision, triggers, or input handling; shader-driven background/visual animation may disappear.",
       "default": true,
       "requires-restart": true
     },
@@ -97,7 +104,7 @@
     "disable-player-particles": {
       "type": "bool",
       "name": "Stop player burst/ground particles",
-      "description": "Stops player ground, landing, dash, click, robot, UFO, swing and trailing particle systems. The HardStreak Wave Trail is preserved.",
+      "description": "Blocks PlayerObject particle attachment before it happens and stops supported player particle emitters. The HardStreak Wave Trail is independent and remains visible.",
       "default": true,
       "requires-restart": true
     },
@@ -132,7 +139,7 @@
     "disable-player-circle-effects": {
       "type": "bool",
       "name": "Skip player transition circles",
-      "description": "Skips spawn, dual, portal and scale circle visuals. Player mode transitions remain unchanged.",
+      "description": "Skips the supported spawn, dual, portal and scale transition circles. The inline spawnCircle2 variant is intentionally not hooked; player mode transitions remain unchanged.",
       "default": true,
       "requires-restart": true
     },
@@ -167,8 +174,8 @@
     "wave-point-spacing": {
       "type": "float",
       "name": "Wave Trail minimum point spacing",
-      "description": "Drop very close points. Combined with step reduction and corner preservation. Higher values simplify the trail more.",
-      "default": 0.18,
+      "description": "Minimum squared-distance filter for closely spaced Wave Trail points. Larger spacing reduces geometry; sharp turns are retained.",
+      "default": 0.35,
       "min": 0.0,
       "max": 1.0,
       "control": {
@@ -191,10 +198,22 @@
     "wave-trail-max-gap": {
       "type": "float",
       "name": "Wave Trail maximum segment gap",
-      "description": "Forces a new point when the kept point gap reaches this distance. Higher values reduce point count but can make the Wave Trail less smooth.",
-      "default": 6.0,
+      "description": "Forces a new Wave Trail point after this distance. Larger values reduce the retained geometry but can make the trail more angular.",
+      "default": 8.0,
       "min": 1.0,
       "max": 12.0,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "wave-trail-max-points": {
+      "type": "int",
+      "name": "Wave Trail maximum retained points",
+      "description": "Hard cap for the Wave Trail point array. Lower values reduce its memory use and geometry cost, but shorten the visible trail. The Wave Trail itself stays enabled.",
+      "default": 96,
+      "min": 16,
+      "max": 256,
       "control": {
         "slider": true
       },
@@ -210,7 +229,7 @@
     "disable-player-impact": {
       "type": "bool",
       "name": "Disable player impact/flashing effects",
-      "description": "Skips bump and flash visuals only. Collision response and player movement are unchanged.",
+      "description": "Skips the supported player bump visual. PlayerObject::flashPlayer is inline in the Windows 2.2081 bindings and cannot be hooked directly; global particle suppression removes the remaining particle-based flashes.",
       "default": true,
       "requires-restart": true
     },
@@ -245,27 +264,20 @@
     "hide-decoration-objects": {
       "type": "bool",
       "name": "Hide decoration-only objects",
-      "description": "Hides objects flagged by the editor as decoration. They remain allocated; combine with Skip decoration updates to reduce their per-frame work.",
+      "description": "Hides objects marked as decoration during gameplay. They remain allocated and in the level object lists; triggers and editor previews are excluded.",
       "default": true,
       "requires-restart": true
     },
     "wave-trail-render-step": {
       "type": "int",
       "name": "Wave Trail renderer refresh interval",
-      "description": "Refresh the Wave Trail geometry every N scheduled updates. Default 1 preserves full refresh cadence. Values 2-3 save more rendering work but make the trail less fluid.",
-      "default": 1,
+      "description": "Rebuild Wave Trail geometry once every N scheduled updates. Default 2 halves its geometry rebuild cadence while keeping the last rendered trail visible.",
+      "default": 2,
       "min": 1,
       "max": 3,
       "control": {
         "slider": true
       },
-      "requires-restart": true
-    },
-    "skip-decoration-updates": {
-      "type": "bool",
-      "name": "Skip hidden decoration updates",
-      "description": "Skips GameObject::update only for objects flagged decoration and not flagged as triggers. Their rendering is already hidden. Triggers, gameplay objects, collisions and physics are untouched.",
-      "default": true,
       "requires-restart": true
     },
     "disable-camera-shake": {
@@ -278,7 +290,7 @@
     "disable-player-burst": {
       "type": "bool",
       "name": "Disable player burst visuals",
-      "description": "Skips the player burst-only visual effect. Does not alter movement, collisions or death state.",
+      "description": "Stops supported robot/swing burst particle emitters. The inline playBurstEffect method itself is not hooked; global particle suppression also stops remaining particle systems.",
       "default": true,
       "requires-restart": true
     }
