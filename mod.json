@@ -5,46 +5,280 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.3.0",
+  "version": "v0.6.0",
   "developer": "GD FPS Core contributors",
-  "description": "Extreme render profile and frame-pacing monitor for Geometry Dash 2.2081.",
+  "description": "ULTRA load-shedding profile: prevents particle emitter creation, filters High Detail objects through native LDM, skips updates for hidden decoration-only objects, suppresses secondary visuals, and keeps the Wave Trail visible with adaptive point reduction.",
   "settings": {
-    "performance-header": {
+    "perf-header": {
       "type": "title",
-      "name": "Extreme Performance Profile"
+      "name": "Performance Profiler",
+      "description": "Profiling is disabled by default to minimize monitoring overhead. Enable only when diagnosing performance."
+    },
+    "frame-monitor": {
+      "type": "bool",
+      "name": "Frame cadence monitor",
+      "description": "Measures the interval between drawScene calls and the CPU time spent inside drawScene. This is not a GPU timer or exact monitor-present FPS.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-game-update": {
+      "type": "bool",
+      "name": "Profile main game update",
+      "description": "Measures inclusive CPU time in GJBaseGameLayer::update. Adds small measurement overhead.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-player-update": {
+      "type": "bool",
+      "name": "Profile player updates",
+      "description": "Measures CPU time in PlayerObject::update and counts update calls. Adds small measurement overhead.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-particle-update": {
+      "type": "bool",
+      "name": "Profile particle simulation",
+      "description": "Measures CCParticleSystem::update time, counts calls and samples active particle counts. Adds measurement overhead.",
+      "default": false,
+      "requires-restart": true
+    },
+    "report-interval": {
+      "type": "int",
+      "name": "Report interval (frames)",
+      "description": "Number of frame samples in each report. Higher values smooth out short spikes.",
+      "default": 120,
+      "min": 60,
+      "max": 600,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "visual-header": {
+      "type": "title",
+      "name": "EXTREME VISUAL REDUCTION",
+      "description": "ULTRA profile defaults: remove all practical secondary effects, avoid allocating particle emitters, avoid adding player particle systems to the scene, filter High Detail objects through native Extra LDM, hide decoration-only objects and skip their per-frame updates. Wave Trail remains visible."
+    },
+    "disable-all-particles": {
+      "type": "bool",
+      "name": "Disable EVERY CCParticleSystem effect",
+      "description": "Suppress all particle trigger visuals and stop any remaining Cocos particle systems. Object emitters are prevented before creation and player particle systems are not attached. The Wave Trail uses HardStreak and is kept.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-scene-glitter": {
+      "type": "bool",
+      "name": "Disable scene glitter",
+      "description": "Suppresses GJBaseGameLayer glitter visuals. Does not block trigger logic.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-gravity-transition-visual": {
+      "type": "bool",
+      "name": "Disable gravity transition visuals",
+      "description": "Suppresses the visual gravity-flip effect only. Gravity and player physics remain unchanged.",
+      "default": true,
+      "requires-restart": true
     },
     "disable-object-glow": {
       "type": "bool",
-      "name": "Disable level object glows",
-      "description": "Hides the separate glow sprite attached to level objects. Visual-only; may reduce overdraw and draw work.",
+      "name": "Hide level object glows",
+      "description": "Hides the separate glow sprite attached to level objects. May reduce overdraw, but changes appearance.",
       "default": true,
       "requires-restart": true
     },
     "disable-object-particles": {
       "type": "bool",
-      "name": "Hide level object particles",
-      "description": "Hides particle emitters attached to GameObjects after activation. Particle simulation may still run; this primarily reduces rendering work.",
+      "name": "Stop level object particles",
+      "description": "Prevents GameObject particle emitters from being created or attached, using the native m_hasNoParticles guard.",
       "default": true,
       "requires-restart": true
     },
     "disable-player-particles": {
       "type": "bool",
-      "name": "Hide player visual particles",
-      "description": "Hides ground, landing, dash, click, robot, UFO and swing particles. Player physics and inputs are unchanged. The Wave Trail and streaks are preserved.",
+      "name": "Stop player burst/ground particles",
+      "description": "Stops player ground, landing, dash, click, robot, UFO, swing and trailing particle systems. The HardStreak Wave Trail is preserved.",
       "default": true,
       "requires-restart": true
     },
     "disable-player-glow": {
       "type": "bool",
-      "name": "Disable player icon and vehicle glow",
-      "description": "Hides the player icon and vehicle glow sprites. Visual-only.",
+      "name": "Hide player icon/vehicle glow",
+      "description": "Hides player icon and vehicle glow sprites. Changes appearance.",
       "default": true,
       "requires-restart": true
     },
-    "frame-monitor": {
+    "disable-object-shine": {
       "type": "bool",
-      "name": "Enable frame-pacing monitor",
-      "description": "Logs frame-call intervals and CPU drawScene duration every 120 samples. This is not a GPU timer or a guarantee of displayed FPS.",
+      "name": "Skip object shine animations",
+      "description": "Prevents GameObject shine effects from being created. Changes appearance.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-trigger-flash": {
+      "type": "bool",
+      "name": "Skip trigger flash effects",
+      "description": "Skips EffectGameObject trigger flash visuals. Trigger logic and timing still run.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-ring-pulse": {
+      "type": "bool",
+      "name": "Skip ring activation pulses",
+      "description": "Skips the visual circle spawned when a RingObject activates. Ring behavior is unchanged.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-player-circle-effects": {
+      "type": "bool",
+      "name": "Skip player transition circles",
+      "description": "Skips spawn, dual, portal and scale circle visuals. Player mode transitions remain unchanged.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-death-effect": {
+      "type": "bool",
+      "name": "Disable player death effect",
+      "description": "Suppresses the player death burst/visual effect. Death state, reset timing and gameplay remain unchanged.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-non-wave-trail": {
+      "type": "bool",
+      "name": "Disable all non-Wave player trails",
+      "description": "Disables standard/ship CCMotionStreak trails. The Wave Trail HardStreak remains visible.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-ghost-effect": {
+      "type": "bool",
+      "name": "Disable ghost trail/effect",
+      "description": "Prevents the temporary ghost visual effect while keeping the player state and gameplay unchanged.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-spider-dash-visual": {
+      "type": "bool",
+      "name": "Skip Spider dash visual",
+      "description": "Skips the Spider dash visual effect only. Spider movement and collision behavior are unchanged.",
+      "default": true,
+      "requires-restart": true
+    },
+    "wave-point-spacing": {
+      "type": "float",
+      "name": "Wave Trail minimum point spacing",
+      "description": "Drop very close points. Combined with step reduction and corner preservation. Higher values simplify the trail more.",
+      "default": 0.18,
+      "min": 0.0,
+      "max": 1.0,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "wave-trail-sample-step": {
+      "type": "int",
+      "name": "Wave Trail sample reduction",
+      "description": "Keep approximately one point per N incoming straight-line samples. 4 is the aggressive default; sharp turns and long gaps force extra points to preserve the trail shape.",
+      "default": 4,
+      "min": 1,
+      "max": 4,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "wave-trail-max-gap": {
+      "type": "float",
+      "name": "Wave Trail maximum segment gap",
+      "description": "Forces a new point when the kept point gap reaches this distance. Higher values reduce point count but can make the Wave Trail less smooth.",
+      "default": 6.0,
+      "min": 1.0,
+      "max": 12.0,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "disable-player-fire": {
+      "type": "bool",
+      "name": "Disable all non-Wave player fire/dash visuals",
+      "description": "Hides robot/swing/dash fire sprites and skips swing-fire visual updates. Does not touch the Wave Trail.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-player-impact": {
+      "type": "bool",
+      "name": "Disable player impact/flashing effects",
+      "description": "Skips bump and flash visuals only. Collision response and player movement are unchanged.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-player-completion": {
+      "type": "bool",
+      "name": "Disable player completion effect",
+      "description": "Skips the player completion-only visual effect. Level completion logic remains active.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-player-spawn": {
+      "type": "bool",
+      "name": "Disable player spawn effect",
+      "description": "Skips the player spawn visual effect only.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-high-detail-objects": {
+      "type": "bool",
+      "name": "Force native Ultra LDM (filter High Detail during parsing)",
+      "description": "For gameplay only, forces the engine Low Detail + Extra LDM flags and passes lowDetail=true to GameObject::objectFromVector. Objects marked High Detail can be omitted before entering the runtime object list, reducing draw and object-list work. Does not skip gameplay logic for remaining objects.",
+      "default": true,
+      "requires-restart": true
+    },
+    "profile-visibility-update": {
+      "type": "bool",
+      "name": "Profile PlayLayer object visibility update",
+      "description": "Measures CPU time in PlayLayer::updateVisibility and reports the loaded level object count. Adds small diagnostic overhead.",
+      "default": false,
+      "requires-restart": true
+    },
+    "hide-decoration-objects": {
+      "type": "bool",
+      "name": "Hide decoration-only objects",
+      "description": "Hides objects flagged by the editor as decoration. They remain allocated; combine with Skip decoration updates to reduce their per-frame work.",
+      "default": true,
+      "requires-restart": true
+    },
+    "wave-trail-render-step": {
+      "type": "int",
+      "name": "Wave Trail renderer refresh interval",
+      "description": "Refresh the Wave Trail geometry every N scheduled updates. Default 1 preserves full refresh cadence. Values 2-3 save more rendering work but make the trail less fluid.",
+      "default": 1,
+      "min": 1,
+      "max": 3,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "skip-decoration-updates": {
+      "type": "bool",
+      "name": "Skip hidden decoration updates",
+      "description": "Skips GameObject::update only for objects flagged decoration and not flagged as triggers. Their rendering is already hidden. Triggers, gameplay objects, collisions and physics are untouched.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-camera-shake": {
+      "type": "bool",
+      "name": "Disable camera shake",
+      "description": "Removes only visual camera-shake requests. Camera/level logic is unchanged.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-player-burst": {
+      "type": "bool",
+      "name": "Disable player burst visuals",
+      "description": "Skips the player burst-only visual effect. Does not alter movement, collisions or death state.",
       "default": true,
       "requires-restart": true
     }
