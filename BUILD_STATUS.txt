@@ -1,6 +1,11 @@
-GD FPS Core v0.8.1 — MAX ULTRA X Hotfix
+GD FPS Core v0.8.2 — Stability Hotfix
 
-Hotfix applied from the user-provided Windows GD 2.2081 build log.
-Fixed the only compiler diagnostic shown in that log: toggleBGEffectVisibility is declared on PlayLayer and is called as PlayLayer::toggleBGEffectVisibility(false) from the PlayLayer instance hook.
+Changes made in response to a crash when entering a level:
+- Removed PlayLayer::init visibility toggles, including the init-time background-effect call.
+- Removed the PlayerObject::addAllParticles early return; native particle nodes are attached normally.
+- Preserved GameObject::createAndAddParticle original return value; optional emitters are stopped/hidden after creation instead of returning nullptr.
+- Removed unscheduleUpdate calls from particle setup/update paths to avoid mutating Cocos scheduler state during callbacks.
+- Restored GJBaseGameLayer::updateParticles bookkeeping; visual particle suppression remains at emitter/trigger entry points.
+- Removed init-time ground/midground visibility options that depended on the unsafe PlayLayer initialization hook.
 
-Validation performed in this environment: mod.json parses; source package contents and ZIP integrity validated. No Geode SDK/Windows toolchain is available here to run the actual compile. Re-run the same CI build to confirm.
+Validation in this environment: source edits reviewed; mod.json parsed; ZIP integrity checked. A Windows Geode SDK build and in-game launch test have NOT been run here.

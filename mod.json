@@ -5,9 +5,9 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.8.1",
+  "version": "v0.8.2",
   "developer": "GD FPS Core contributors",
-  "description": "MAX ULTRA X hotfix: fixes background-effect visibility call target for Windows GD 2.2081. Retains visual reductions, optional layer hiding, profiling, and Wave Trail preservation.",
+  "description": "Stability hotfix: preserves native PlayLayer construction, particle factory return values, PlayerObject particle attachment, and Cocos scheduler bookkeeping while retaining supported visual optimizations.",
   "settings": {
     "perf-header": {
       "type": "title",
@@ -85,12 +85,12 @@
     "visual-header": {
       "type": "title",
       "name": "EXTREME VISUAL REDUCTION",
-      "description": "MAX ULTRA profile: suppress supported particle triggers and emitters, stop/unschedule remaining particle systems, remove player/object secondary visuals, force native Extra LDM, and hide gameplay decorations. Gameplay physics, triggers, collision and inputs remain active. The Wave Trail is kept but its stored geometry is simplified and bounded."
+      "description": "MAX ULTRA profile: suppress supported particle triggers and emitters, stop/hide optional particle systems without modifying Cocos scheduler state, remove supported player/object secondary visuals, force native Extra LDM, and hide gameplay decorations. PlayLayer initialization and gameplay physics/trigger/collision/input handling are left to the game. The Wave Trail is kept but its stored geometry is simplified and bounded."
     },
     "disable-all-particles": {
       "type": "bool",
       "name": "Disable EVERY CCParticleSystem effect",
-      "description": "Suppresses the supported non-inline GJBaseGameLayer particle-trigger entry point, blocks GameObject and PlayerObject emitters, and stops/unschedules remaining Cocos particle systems. The Wave Trail uses HardStreak and is kept.",
+      "description": "Suppresses supported non-inline particle-trigger visuals and stops/hides CCParticleSystem emitters while preserving native factory return values, player particle-node attachment, and Cocos scheduler bookkeeping. The Wave Trail uses HardStreak and is kept.",
       "default": true,
       "requires-restart": true
     },
@@ -125,14 +125,14 @@
     "disable-object-particles": {
       "type": "bool",
       "name": "Stop level object particles",
-      "description": "Prevents GameObject particle emitters from being created or attached, using the native m_hasNoParticles guard.",
+      "description": "Stops and hides optional GameObject particle emitters after the original engine factory returns, preserving the factory return value and object initialization.",
       "default": true,
       "requires-restart": true
     },
     "disable-player-particles": {
       "type": "bool",
       "name": "Stop player burst/ground particles",
-      "description": "Blocks PlayerObject particle attachment before it happens and stops supported player particle emitters. The HardStreak Wave Trail is independent and remains visible.",
+      "description": "Stops and hides optional player particle emitters after native PlayerObject setup. Native particle child attachment is preserved. The HardStreak Wave Trail is independent and remains visible.",
       "default": true,
       "requires-restart": true
     },
@@ -319,27 +319,6 @@
       "type": "title",
       "name": "SCENE / LAYER REDUCTION",
       "description": "Additional optional reductions for background, ground and midground art. Ground and midground are off by default because they can affect visual readability."
-    },
-    "disable-background-effects": {
-      "type": "bool",
-      "name": "Disable background visual effects",
-      "description": "Disables the engine background-effect visibility path for gameplay. Visual only; no collision, trigger, or player-state changes.",
-      "default": true,
-      "requires-restart": true
-    },
-    "hide-ground-layer": {
-      "type": "bool",
-      "name": "Hide ground layer",
-      "description": "Hides the ground art layer to reduce visual work. Ground collision and gameplay remain active. May make the level harder to read.",
-      "default": false,
-      "requires-restart": true
-    },
-    "hide-midground-layer": {
-      "type": "bool",
-      "name": "Hide midground layer",
-      "description": "Hides the midground visual layer. Gameplay and collision remain active.",
-      "default": false,
-      "requires-restart": true
     }
   }
 }

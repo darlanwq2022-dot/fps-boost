@@ -48,9 +48,6 @@ namespace {
     bool g_hideDecorationObjects = true;
     bool g_disableCameraShake = true;
     bool g_disablePlayerBurst = true;
-    bool g_disableBackgroundEffects = true;
-    bool g_hideGroundLayer = false;
-    bool g_hideMidgroundLayer = false;
 
     // Wave Trail remains visible. This spacing only drops very close samples.
     float g_wavePointSpacing = 0.35f;
@@ -276,12 +273,11 @@ namespace {
 
     void stopParticle(cocos2d::CCParticleSystem* particle) {
         if (!particle) return;
-        // All callers use this only for optional visual emitters. Stop emission,
-        // hide the node so the scene graph skips drawing it, and remove its
-        // scheduled per-frame update instead of leaving a dead system ticking.
+        // Keep the Cocos scheduler intact. Unscheduling from inside setup or
+        // from a particle's own update callback can invalidate scheduler state
+        // on some engine builds. Stop emission and hide the visual node only.
         particle->stopSystem();
         if (particle->isVisible()) particle->setVisible(false);
-        particle->unscheduleUpdate();
     }
 
     void hideNode(cocos2d::CCNode* node) {
@@ -399,9 +395,6 @@ namespace {
         g_profileWaveTrail = mod->getSettingValue<bool>("profile-wave-trail");
         g_profileObjectSetup = mod->getSettingValue<bool>("profile-object-setup");
         g_profileObjectParsing = mod->getSettingValue<bool>("profile-object-parsing");
-        g_disableBackgroundEffects = mod->getSettingValue<bool>("disable-background-effects");
-        g_hideGroundLayer = mod->getSettingValue<bool>("hide-ground-layer");
-        g_hideMidgroundLayer = mod->getSettingValue<bool>("hide-midground-layer");
         auto interval = mod->getSettingValue<int64_t>("report-interval");
         g_reportInterval = static_cast<std::size_t>(std::clamp<int64_t>(interval, 60, static_cast<int64_t>(kMaxWindow)));
     }
@@ -447,12 +440,11 @@ class $modify(GDFPSCoreGameLayer, GJBaseGameLayer) {
         }
     }
 
-    // Particle-trigger bookkeeping is visual-only. The trigger itself still
-    // executes; this skips the per-frame emitter update path when particles are off.
+    // Keep the game's particle bookkeeping/update list intact. Individual
+    // CCParticleSystem instances and particle-trigger visuals are suppressed
+    // at their own entry points instead of bypassing the layer manager.
     void updateParticles(float dt) {
-        if (!g_disableAllParticles) {
-            GJBaseGameLayer::updateParticles(dt);
-        }
+        GJBaseGameLayer::updateParticles(dt);
     }
 
     // Shader-layer animation is cosmetic and independent of player physics,
@@ -483,13 +475,6 @@ class $modify(GDFPSCorePlayerObject, PlayerObject) {
     struct Fields {
         bool visualProfileApplied = false;
     };
-
-    // Stop player emitters before they are attached to the scene.
-    // addAllParticles is a real Win 2.2081 entry point (not inline).
-    void addAllParticles() {
-        if (g_disableAllParticles || g_disablePlayerParticles) return;
-        PlayerObject::addAllParticles();
-    }
 
     void update(float dt) {
         const bool measure = g_profilePlayerUpdate;
@@ -595,9 +580,8 @@ class $modify(GDFPSCoreParticleSystem, cocos2d::CCParticleSystem) {
             if (!m_fields->suppressionApplied) {
                 stopSystem();
                 if (isVisible()) setVisible(false);
-                // Particle systems are purely visual. Remove their scheduled
-                // per-frame update instead of waking up just to return early.
-                unscheduleUpdate();
+                // Keep scheduler bookkeeping untouched. The hidden emitter is
+                // stopped once; future callbacks return without simulation.
                 m_fields->suppressionApplied = true;
             }
             return;
@@ -623,13 +607,14 @@ class $modify(GDFPSCoreGameObject, GameObject) {
     };
 
     cocos2d::CCParticleSystemQuad* createAndAddParticle(int objectType, char const* plistName, int tag, cocos2d::tCCPositionType positionType) {
-        if (g_disableAllParticles || g_disableObjectParticles) {
-            // Geode's 2.2081 binding exposes this native guard; setting it
-            // prevents GameObject from creating/attaching its particle emitter.
-            m_hasNoParticles = true;
-            return nullptr;
+        // Preserve the engine's normal factory contract. Some callers retain
+        // and configure the returned emitter, so returning nullptr here can
+        // break level initialization. Suppress it only after creation.
+        auto* particle = GameObject::createAndAddParticle(objectType, plistName, tag, positionType);
+        if (particle && (g_disableAllParticles || g_disableObjectParticles)) {
+            stopParticle(particle);
         }
-        return GameObject::createAndAddParticle(objectType, plistName, tag, positionType);
+        return particle;
     }
 
     static GameObject* objectFromVector(
@@ -818,27 +803,8 @@ class $modify(GDFPSCoreHardStreak, HardStreak) {
 };
 
 class $modify(GDFPSCorePlayLayer, PlayLayer) {
-    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
-
-        // These are visual-only toggles. The ground collision map, object
-        // activation and player physics remain owned by the game engine.
-        if (g_disableBackgroundEffects) {
-            PlayLayer::toggleBGEffectVisibility(false);
-        }
-        if (g_hideGroundLayer) PlayLayer::toggleGroundVisibility(false);
-        if (g_hideMidgroundLayer) PlayLayer::toggleMGVisibility(false);
-        return true;
-    }
-
-    void toggleGroundVisibility(bool visible) {
-        PlayLayer::toggleGroundVisibility(g_hideGroundLayer ? false : visible);
-    }
-
-    void toggleMGVisibility(bool visible) {
-        PlayLayer::toggleMGVisibility(g_hideMidgroundLayer ? false : visible);
-    }
-
+    // Deliberately do not hook PlayLayer::init or invoke layer-visibility
+    // toggles during construction. The engine owns this fragile lifecycle.
     void updateVisibility(float dt) {
         if (!g_profileVisibilityUpdate) {
             PlayLayer::updateVisibility(dt);
@@ -875,10 +841,10 @@ class $modify(GDFPSCoreEffectObject, EffectGameObject) {
 
 $on_mod(Loaded) {
     loadSettings();
-    log::info("GD FPS Core v0.7.1 loaded.");
-    log::info("ULTRA profile: particle creation, layer-level particle updates, shader-layer animation, and supported player/object secondary visuals are suppressed through verified Windows 2.2081 hooks.");
-    log::info("Object particle systems are blocked before creation; remaining particle systems are stopped by the particle-system update hook.");
+    log::info("GD FPS Core v0.8.2 Stability Hotfix loaded.");
+    log::info("ULTRA profile: supported particle triggers and emitters, shader-layer animation, and player/object secondary visuals are suppressed while preserving the engine particle bookkeeping and node lifecycle.");
+    log::info("Object particle factory calls preserve their original return values; optional emitters are stopped and hidden after creation, and the particle update hook avoids simulating suppressed effects.");
     log::info("Native Extra LDM filters High Detail objects before runtime-list insertion; gameplay decorations are hidden without touching trigger objects.");
     log::info("Wave Trail stays enabled with adaptive point decimation, a hard point cap, and reduced renderer refresh frequency.");
-    log::info("Gameplay update, trigger execution, collision, physics and input loops are preserved. Active gameplay objects still require CPU/memory even when secondary visuals are removed.");
+    log::info("PlayLayer construction and Cocos scheduler bookkeeping are left to the game. Gameplay update, trigger execution, collision, physics and input loops are preserved. Active gameplay objects still require CPU/memory even when secondary visuals are removed.");
 }
