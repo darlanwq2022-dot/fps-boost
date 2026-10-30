@@ -1,8 +1,13 @@
-# GD FPS Core v0.8.0 — MAX ULTRA X
+# GD FPS Core v0.8.1 — MAX ULTRA X Hotfix
 
 **Target:** Geometry Dash 2.2081 / Geode 5.11.2 / Windows.
 
 This release extends the aggressive visual-reduction profile and adds diagnostic timing for the systems that matter most on huge levels. It does not claim to make one million active gameplay objects free: parsing, object-list traversal, physics, triggers, collisions and RAM consumption still have unavoidable costs.
+
+## v0.8.1 hotfix
+
+- Fixed the background-effect visibility call: `toggleBGEffectVisibility` is a `PlayLayer` instance method in the Windows GD 2.2081 bindings, not a `GJBaseGameLayer` static/member call.
+- No gameplay logic or optimization behavior was otherwise changed.
 
 ## v0.8.0 additions
 
@@ -34,6 +39,6 @@ Enable the profiler options only while diagnosing a level, then disable them for
 
 ## Build and validation
 
-Build against Geode SDK 5.11.2 and Windows GD 2.2081 bindings. Added PlayLayer hooks (`init`, `toggleGroundVisibility`, `toggleMGVisibility`) correspond to non-inline Windows 2.2081 PlayLayer entries; the background-effect toggle is called as an inline engine helper and is not hooked. Profiling additions use existing hook points already present in this project.
+Build against Geode SDK 5.11.2 and Windows GD 2.2081 bindings. The v0.8.1 hotfix calls the PlayLayer background-effect method on the correct class. Added PlayLayer hooks (`init`, `toggleGroundVisibility`, `toggleMGVisibility`) correspond to non-inline Windows 2.2081 PlayLayer entries; the background-effect toggle is called as an inline engine helper and is not hooked. Profiling additions use existing hook points already present in this project.
 
 This package contains source and metadata, not a compiled `.geode`. The current environment does not have the Geode SDK/toolchain or Geometry Dash executable, so it cannot be compiled or runtime-benchmarked here. Signatures were checked against the published Windows 2.2081 bindings, and JSON/archive structure is validated locally.

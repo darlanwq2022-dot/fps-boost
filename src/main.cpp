@@ -824,7 +824,7 @@ class $modify(GDFPSCorePlayLayer, PlayLayer) {
         // These are visual-only toggles. The ground collision map, object
         // activation and player physics remain owned by the game engine.
         if (g_disableBackgroundEffects) {
-            GJBaseGameLayer::toggleBGEffectVisibility(false);
+            PlayLayer::toggleBGEffectVisibility(false);
         }
         if (g_hideGroundLayer) PlayLayer::toggleGroundVisibility(false);
         if (g_hideMidgroundLayer) PlayLayer::toggleMGVisibility(false);

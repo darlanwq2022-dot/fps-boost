@@ -1,12 +1,6 @@
-GD FPS Core v0.8.0 MAX ULTRA X
+GD FPS Core v0.8.1 — MAX ULTRA X Hotfix
 
-Validation completed:
-- mod.json parses as valid JSON.
-- All settings referenced by main.cpp are present in mod.json.
-- Source braces are balanced.
-- Added PlayLayer::init, toggleGroundVisibility and toggleMGVisibility signatures checked against the published Windows GD 2.2081 bindings.
+Hotfix applied from the user-provided Windows GD 2.2081 build log.
+Fixed the only compiler diagnostic shown in that log: toggleBGEffectVisibility is declared on PlayLayer and is called as PlayLayer::toggleBGEffectVisibility(false) from the PlayLayer instance hook.
 
-Not completed:
-- A Geode compilation was NOT run because GEODE_SDK is not installed in this environment.
-- No runtime or FPS benchmark was performed.
-- This archive is source + metadata, not a compiled .geode.
+Validation performed in this environment: mod.json parses; source package contents and ZIP integrity validated. No Geode SDK/Windows toolchain is available here to run the actual compile. Re-run the same CI build to confirm.

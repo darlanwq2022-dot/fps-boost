@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.1 — MAX ULTRA X Hotfix
+- Fixed `toggleBGEffectVisibility(false)` to call `PlayLayer::toggleBGEffectVisibility(false)`, matching the Windows GD 2.2081 binding declaration.
+- No other behavior changed.
+
 ## v0.8.0 — MAX ULTRA X
 - Added an optional background-effect suppression path, applied when PlayLayer initializes.
 - Added optional ground and midground art-layer hiding, while preserving the collision/gameplay world.

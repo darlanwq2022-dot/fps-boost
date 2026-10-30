@@ -5,9 +5,9 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.8.0",
+  "version": "v0.8.1",
   "developer": "GD FPS Core contributors",
-  "description": "MAX ULTRA X: aggressive visual-load reduction, optional background/ground layer suppression, and per-system CPU profiling. Keeps gameplay physics, collision, triggers, and inputs intact; Wave Trail remains enabled.",
+  "description": "MAX ULTRA X hotfix: fixes background-effect visibility call target for Windows GD 2.2081. Retains visual reductions, optional layer hiding, profiling, and Wave Trail preservation.",
   "settings": {
     "perf-header": {
       "type": "title",
