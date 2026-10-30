@@ -1,53 +1,39 @@
-# GD FPS Core — v0.2.1
+# GD FPS Core v0.3.0 — Extreme Render Profile
 
-Target: Geometry Dash Windows 2.2081 + Geode.
+Target: Geometry Dash Windows 2.2081 + Geode 5.11.2.
 
-## Implemented
+## What's implemented
 
-This version adds a frame-time profiler by modifying `cocos2d::CCDirector::drawScene()` and timing the original call with `std::chrono::steady_clock`.
+### Real visual-work reductions
 
-Every 120 frames, the Geode log receives:
-- average CPU-side `drawScene` duration;
-- 95th-percentile duration (p95);
-- maximum duration in the sample window;
-- reciprocal of average duration, shown as an indicative FPS figure.
+- **Level object glow reduction:** hides each `GameObject`'s separate `m_glowSprite` after object setup and after glow-color updates. This reduces glow overdraw and draw work where levels use many glowing objects.
+- **Level object particle rendering reduction:** hides `GameObject::m_particle` after particle activation. This removes its draw work; the particle system may still be scheduled and simulated internally.
+- **Player visual particle reduction:** hides the player's ground, landing, click, vehicle, UFO, robot, dash, and swing particle emitters after `PlayerObject::update`.
+- **Player glow reduction:** hides the icon and vehicle glow sprites.
+- The actual Wave Trail (`m_waveTrail`), trailing particles (`m_trailingParticles`), regular trail, and ship streak are deliberately untouched.
 
-### Important measurement limits
+The options are enabled by default for the Extreme profile and require a restart. They can be changed from the mod's Geode settings page. These are visual-only reductions; physics, hitboxes, collision checks, object timing, and inputs are not changed.
 
-This is a CPU-side wall-clock measurement around `drawScene`, not a GPU timer. It measures time spent by the CPU in the function and the graphics-driver submission path; asynchronous GPU work may continue after the function returns. The reciprocal-average figure is therefore not a replacement for an in-game FPS counter or a GPU profiler. Compare results in the same scene and conditions.
+### Corrected frame monitor
 
-## Safety constraints
+The previous profiler reported `1000 / drawScene CPU duration` as an FPS-like value. That was misleading. v0.3.0 separates:
 
-- Preserve the Wave Trail.
-- Do not change physics, collision, hitboxes, player input, or object timing.
-- Do not globally disable particle systems: some are gameplay-relevant or owned by the player.
-- Do not hook undocumented methods or assume a node is decorative based only on its class.
-- No NOVA dependency.
-- The profiler calls the original `drawScene()` exactly once and does not alter its return flow (the function is `void`).
+- frame-call interval: time between successive `CCDirector::drawScene()` entries;
+- p95/p99/max frame-call interval;
+- average call rate and a p99-derived 1% low estimate;
+- CPU time spent inside `drawScene()` (average and p95).
 
-## Build (Windows)
+This measures frame-call pacing and CPU-side draw submission time. It does **not** measure asynchronous GPU execution or prove the exact number of frames physically displayed by the monitor.
 
-1. Install the Geode SDK and CLI for the target Geometry Dash version.
-2. Open a terminal in this folder.
-3. Run `geode build`.
+## Build
 
-Alternatively, configure with CMake after setting `GEODE_SDK` to the SDK directory.
+1. Extract this archive directly into the repository root.
+2. Confirm `mod.json` is beside `CMakeLists.txt`.
+3. Build with the Geode CLI / `geode-sdk/build-geode-mod` GitHub Action.
+4. Install the resulting `.geode` file through Geode.
 
-## Next stages
+## Important limits
 
-1. Use profiler data from dense levels to identify whether CPU frame time is a bottleneck.
-2. Add opt-in, narrowly scoped visual-effect controls only for effects whose ownership and gameplay role are verified.
-3. Investigate Wave Trail optimization separately, preserving its visible path and timing.
-4. Compare frame-time distributions before and after each change.
+This source package has not been compiled or tested against your local game in this environment. The hooks use the published 2.2081 bindings for `GameObject` and `PlayerObject`, but a successful GitHub Actions build is still required. No numeric FPS gain is claimed until you compare the same level and scene before and after.
 
-No performance gain is claimed until measured in-game. This source package has not been compiled against your local Geode SDK or tested in Geometry Dash in this environment.
-
-
-## Build compatibility
-
-This source package pins the Geode SDK requirement to `5.11.2` in `mod.json`, matching the SDK tag successfully installed in the supplied GitHub Actions log.
-
-
-## Important: repository root
-
-Extract this archive directly into the root of your GitHub repository and overwrite existing files. The `mod.json` in the repository root must contain `"geode": "5.11.2"`. Do not leave these files nested only inside a `GEODE_FPS_CORE/` subfolder, because the build action reads `./mod.json`.
+The particle options hide rendering; they do not yet stop all particle simulation. More aggressive culling or particle-simulation changes need separate in-game testing because broad Cocos node culling can hide gameplay cues or freeze effects incorrectly.

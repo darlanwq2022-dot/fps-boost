@@ -1,17 +1,19 @@
 # Changelog
 
-## v0.2.1
-- Fixed `mod.json` Geode SDK requirement: `5.11.2` replaces the literal `$GEODE_VERSION` that caused the CI tag lookup failure.
-- Updated the CMake project version to `0.2.1`.
-- This fixes the specific SDK tag lookup error in the supplied log; a successful compile still needs confirmation from GitHub Actions.
+## v0.3.0
+- Replaced the misleading reciprocal of `drawScene` CPU duration with frame-call interval metrics.
+- Added avg/p95/p99/max intervals, average frame-call rate, estimated 1% low, and separate `drawScene` CPU avg/p95.
+- Added optional visual reductions for GameObject glow sprites and particle emitters.
+- Added player visual particle and player glow reductions.
+- Preserved `PlayerObject::m_waveTrail`, `m_trailingParticles`, `m_regularTrail`, and `m_shipStreak`.
+- Added Geode settings for each option; the settings require restart.
+- No changes to physics, collisions, hitboxes, object timing, or inputs.
 
-# Changelog
+## v0.2.1
+- Fixed Geode SDK pin to 5.11.2.
 
 ## v0.2.0
-- Added a CCDirector::drawScene CPU-side frame-time profiler.
-- Reports average, 95th percentile, maximum, and reciprocal-average FPS every 120 frames.
-- Preserves original drawScene call order and invokes the original exactly once.
-- No gameplay, physics, collision, input, particle, or Wave Trail behavior changes.
+- Added CPU-side drawScene timing monitor.
 
 ## v0.1.0
 - Initial Geode project foundation.

@@ -5,7 +5,48 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.2.1",
+  "version": "v0.3.0",
   "developer": "GD FPS Core contributors",
-  "description": "Low-overhead frame-time profiler and safe performance optimization foundation for Geometry Dash 2.2081."
+  "description": "Extreme render profile and frame-pacing monitor for Geometry Dash 2.2081.",
+  "settings": {
+    "performance-header": {
+      "type": "title",
+      "name": "Extreme Performance Profile"
+    },
+    "disable-object-glow": {
+      "type": "bool",
+      "name": "Disable level object glows",
+      "description": "Hides the separate glow sprite attached to level objects. Visual-only; may reduce overdraw and draw work.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-object-particles": {
+      "type": "bool",
+      "name": "Hide level object particles",
+      "description": "Hides particle emitters attached to GameObjects after activation. Particle simulation may still run; this primarily reduces rendering work.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-player-particles": {
+      "type": "bool",
+      "name": "Hide player visual particles",
+      "description": "Hides ground, landing, dash, click, robot, UFO and swing particles. Player physics and inputs are unchanged. The Wave Trail and streaks are preserved.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-player-glow": {
+      "type": "bool",
+      "name": "Disable player icon and vehicle glow",
+      "description": "Hides the player icon and vehicle glow sprites. Visual-only.",
+      "default": true,
+      "requires-restart": true
+    },
+    "frame-monitor": {
+      "type": "bool",
+      "name": "Enable frame-pacing monitor",
+      "description": "Logs frame-call intervals and CPU drawScene duration every 120 samples. This is not a GPU timer or a guarantee of displayed FPS.",
+      "default": true,
+      "requires-restart": true
+    }
+  }
 }

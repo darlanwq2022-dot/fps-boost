@@ -1,5 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/CCDirector.hpp>
+#include <Geode/modify/GameObject.hpp>
+#include <Geode/modify/PlayerObject.hpp>
 
 #include <algorithm>
 #include <array>
@@ -10,67 +12,209 @@
 using namespace geode::prelude;
 
 namespace {
-    // Measures CPU-side time spent inside CCDirector::drawScene.
-    // This is NOT a GPU timer: asynchronous GPU work may continue after return.
     constexpr std::size_t kWindowSize = 120;
     using Clock = std::chrono::steady_clock;
 
+    // These values are loaded once. The corresponding Geode settings require a restart,
+    // so no attempt is made to restore game-owned visibility state at runtime.
+    bool g_disableObjectGlow = true;
+    bool g_disableObjectParticles = true;
+    bool g_disablePlayerParticles = true;
+    bool g_disablePlayerGlow = true;
+    bool g_frameMonitorEnabled = true;
+
+    template <class T>
+    void hideNode(T* node) {
+        if (node && node->isVisible()) {
+            node->setVisible(false);
+        }
+    }
+
     struct FrameWindow {
-        std::array<double, kWindowSize> samples{};
+        std::array<double, kWindowSize> frameIntervalsMs{};
+        std::array<double, kWindowSize> drawCpuMs{};
         std::size_t count = 0;
         std::size_t next = 0;
-        std::uint64_t totalFrames = 0;
+        std::uint64_t totalSamples = 0;
+        bool hasPreviousFrameStart = false;
+        Clock::time_point previousFrameStart{};
 
-        void push(double milliseconds) {
-            samples[next] = milliseconds;
+        double markFrameStart(Clock::time_point now) {
+            double intervalMs = 0.0;
+            if (hasPreviousFrameStart) {
+                intervalMs = std::chrono::duration<double, std::milli>(now - previousFrameStart).count();
+            }
+            previousFrameStart = now;
+            hasPreviousFrameStart = true;
+            return intervalMs;
+        }
+
+        void push(double intervalMs, double cpuMs) {
+            if (intervalMs <= 0.0) {
+                return;
+            }
+
+            frameIntervalsMs[next] = intervalMs;
+            drawCpuMs[next] = cpuMs;
             next = (next + 1) % kWindowSize;
             if (count < kWindowSize) {
                 ++count;
             }
-            ++totalFrames;
+            ++totalSamples;
 
-            if (count == kWindowSize && totalFrames % kWindowSize == 0) {
+            if (count == kWindowSize && totalSamples % kWindowSize == 0) {
                 report();
             }
         }
 
-        void report() const {
-            auto sorted = samples;
-            std::sort(sorted.begin(), sorted.end());
+        static double percentile(const std::array<double, kWindowSize>& sorted, double percentileValue) {
+            const auto index = static_cast<std::size_t>(percentileValue * static_cast<double>(kWindowSize - 1));
+            return sorted[std::min(index, kWindowSize - 1)];
+        }
 
-            double sum = 0.0;
-            for (double value : samples) {
-                sum += value;
+        void report() const {
+            auto sortedIntervals = frameIntervalsMs;
+            auto sortedCpu = drawCpuMs;
+            std::sort(sortedIntervals.begin(), sortedIntervals.end());
+            std::sort(sortedCpu.begin(), sortedCpu.end());
+
+            double intervalSum = 0.0;
+            double cpuSum = 0.0;
+            for (std::size_t i = 0; i < kWindowSize; ++i) {
+                intervalSum += frameIntervalsMs[i];
+                cpuSum += drawCpuMs[i];
             }
 
-            const double average = sum / static_cast<double>(kWindowSize);
-            const double p95 = sorted[static_cast<std::size_t>(0.95 * (kWindowSize - 1))];
-            const double worst = sorted.back();
-            const double estimatedFps = average > 0.0 ? 1000.0 / average : 0.0;
+            const double averageInterval = intervalSum / static_cast<double>(kWindowSize);
+            const double averageCpu = cpuSum / static_cast<double>(kWindowSize);
+            const double p95Interval = percentile(sortedIntervals, 0.95);
+            const double p99Interval = percentile(sortedIntervals, 0.99);
+            const double worstInterval = sortedIntervals.back();
+            const double p95Cpu = percentile(sortedCpu, 0.95);
+            const double callRate = averageInterval > 0.0 ? 1000.0 / averageInterval : 0.0;
+            const double lowOnePercentEstimate = p99Interval > 0.0 ? 1000.0 / p99Interval : 0.0;
 
             log::info(
-                "[GD FPS Core] CPU frame time (last {} frames): avg {:.3f} ms | p95 {:.3f} ms | max {:.3f} ms | reciprocal avg {:.1f} FPS",
-                kWindowSize, average, p95, worst, estimatedFps
+                "[GD FPS Core] Frame-call interval ({} samples): avg {:.3f} ms | p95 {:.3f} ms | p99 {:.3f} ms | max {:.3f} ms | avg call-rate {:.1f}/s | estimated 1% low {:.1f}/s | drawScene CPU avg {:.3f} ms | CPU p95 {:.3f} ms",
+                kWindowSize,
+                averageInterval,
+                p95Interval,
+                p99Interval,
+                worstInterval,
+                callRate,
+                lowOnePercentEstimate,
+                averageCpu,
+                p95Cpu
             );
         }
     };
 
     FrameWindow g_frameWindow;
+
+    void applyObjectVisualProfile(GameObject* object) {
+        if (!object) {
+            return;
+        }
+
+        if (g_disableObjectGlow) {
+            hideNode(object->m_glowSprite);
+        }
+        if (g_disableObjectParticles) {
+            hideNode(object->m_particle);
+        }
+    }
+
+    void applyPlayerVisualProfile(PlayerObject* player) {
+        if (!player || !PlayLayer::get()) {
+            return;
+        }
+
+        if (g_disablePlayerParticles) {
+            hideNode(player->m_playerGroundParticles);
+            hideNode(player->m_shipClickParticles);
+            hideNode(player->m_vehicleGroundParticles);
+            hideNode(player->m_ufoClickParticles);
+            hideNode(player->m_robotBurstParticles);
+            hideNode(player->m_dashParticles);
+            hideNode(player->m_swingBurstParticles1);
+            hideNode(player->m_swingBurstParticles2);
+            hideNode(player->m_landParticles0);
+            hideNode(player->m_landParticles1);
+
+            // Intentionally preserved: m_trailingParticles, m_regularTrail,
+            // m_shipStreak and m_waveTrail (the visible Wave Trail).
+        }
+
+        if (g_disablePlayerGlow) {
+            hideNode(player->m_iconGlow);
+            hideNode(player->m_vehicleGlow);
+        }
+    }
 }
 
 class $modify(GDFPSCoreDirector, CCDirector) {
     void drawScene() {
-        const auto start = Clock::now();
-        CCDirector::drawScene();
-        const auto end = Clock::now();
+        if (!g_frameMonitorEnabled) {
+            CCDirector::drawScene();
+            return;
+        }
 
-        const double elapsedMs = std::chrono::duration<double, std::milli>(end - start).count();
-        g_frameWindow.push(elapsedMs);
+        const auto frameStart = Clock::now();
+        const double frameIntervalMs = g_frameWindow.markFrameStart(frameStart);
+
+        CCDirector::drawScene();
+
+        const auto frameEnd = Clock::now();
+        const double drawCpuMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
+        g_frameWindow.push(frameIntervalMs, drawCpuMs);
+    }
+};
+
+class $modify(GDFPSCoreGameObject, GameObject) {
+    void customSetup() {
+        GameObject::customSetup();
+        applyObjectVisualProfile(this);
+    }
+
+    void setGlowColor(cocos2d::ccColor3B const& color) {
+        GameObject::setGlowColor(color);
+        if (g_disableObjectGlow) {
+            hideNode(m_glowSprite);
+        }
+    }
+
+    void claimParticle() {
+        GameObject::claimParticle();
+        if (g_disableObjectParticles) {
+            hideNode(m_particle);
+        }
+    }
+};
+
+class $modify(GDFPSCorePlayerObject, PlayerObject) {
+    void update(float dt) {
+        PlayerObject::update(dt);
+        applyPlayerVisualProfile(this);
     }
 };
 
 $on_mod(Loaded) {
-    log::info("GD FPS Core v0.2.1 loaded.");
-    log::info("Frame profiler active: CPU-side CCDirector::drawScene duration, reported every 120 frames.");
-    log::info("No gameplay, physics, collision, input, particle, or Wave Trail behavior is modified.");
+    auto* mod = Mod::get();
+    g_disableObjectGlow = mod->getSettingValue<bool>("disable-object-glow");
+    g_disableObjectParticles = mod->getSettingValue<bool>("disable-object-particles");
+    g_disablePlayerParticles = mod->getSettingValue<bool>("disable-player-particles");
+    g_disablePlayerGlow = mod->getSettingValue<bool>("disable-player-glow");
+    g_frameMonitorEnabled = mod->getSettingValue<bool>("frame-monitor");
+
+    log::info("GD FPS Core v0.3.0 loaded.");
+    log::info(
+        "Extreme profile: object glow={}, object particles={}, player particles={}, player glow={}, frame monitor={}",
+        g_disableObjectGlow,
+        g_disableObjectParticles,
+        g_disablePlayerParticles,
+        g_disablePlayerGlow,
+        g_frameMonitorEnabled
+    );
+    log::info("Wave Trail and player streaks are preserved. Physics, collisions, object timing and inputs are not modified.");
+    log::info("Frame-call rate is an estimate based on drawScene call intervals; it is not a GPU timer or guaranteed display-present FPS.");
 }
