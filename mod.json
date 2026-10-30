@@ -5,9 +5,9 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.7.1",
+  "version": "v0.8.0",
   "developer": "GD FPS Core contributors",
-  "description": "MAXIMUM visual-load reduction for Geometry Dash 2.2081: suppresses particle creation and per-frame updates, shader-layer animation, supported trigger/player/object effects, forces native Extra LDM, hides gameplay decorations, and keeps the Wave Trail visible with bounded point history and reduced geometry refresh.",
+  "description": "MAX ULTRA X: aggressive visual-load reduction, optional background/ground layer suppression, and per-system CPU profiling. Keeps gameplay physics, collision, triggers, and inputs intact; Wave Trail remains enabled.",
   "settings": {
     "perf-header": {
       "type": "title",
@@ -39,6 +39,34 @@
       "type": "bool",
       "name": "Profile particle simulation",
       "description": "Measures CCParticleSystem::update time, counts calls and samples active particle counts. Adds measurement overhead.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-visibility-update": {
+      "type": "bool",
+      "name": "Profile PlayLayer object visibility update",
+      "description": "Measures CPU time in PlayLayer::updateVisibility and reports the loaded level object count. Adds small diagnostic overhead.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-wave-trail": {
+      "type": "bool",
+      "name": "Profile Wave Trail renderer",
+      "description": "Measures executed HardStreak::updateStroke CPU time. Diagnostic only; adds timing overhead while enabled.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-object-setup": {
+      "type": "bool",
+      "name": "Profile GameObject setup",
+      "description": "Measures GameObject::customSetup CPU time while objects are created/configured. Diagnostic only; adds timing overhead while enabled.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-object-parsing": {
+      "type": "bool",
+      "name": "Profile object parser",
+      "description": "Measures GameObject::objectFromVector CPU time, useful for large level loading/creation spikes. Diagnostic only; adds timing overhead while enabled.",
       "default": false,
       "requires-restart": true
     },
@@ -254,13 +282,6 @@
       "default": true,
       "requires-restart": true
     },
-    "profile-visibility-update": {
-      "type": "bool",
-      "name": "Profile PlayLayer object visibility update",
-      "description": "Measures CPU time in PlayLayer::updateVisibility and reports the loaded level object count. Adds small diagnostic overhead.",
-      "default": false,
-      "requires-restart": true
-    },
     "hide-decoration-objects": {
       "type": "bool",
       "name": "Hide decoration-only objects",
@@ -292,6 +313,32 @@
       "name": "Disable player burst visuals",
       "description": "Stops supported robot/swing burst particle emitters. The inline playBurstEffect method itself is not hooked; global particle suppression also stops remaining particle systems.",
       "default": true,
+      "requires-restart": true
+    },
+    "scene-header": {
+      "type": "title",
+      "name": "SCENE / LAYER REDUCTION",
+      "description": "Additional optional reductions for background, ground and midground art. Ground and midground are off by default because they can affect visual readability."
+    },
+    "disable-background-effects": {
+      "type": "bool",
+      "name": "Disable background visual effects",
+      "description": "Disables the engine background-effect visibility path for gameplay. Visual only; no collision, trigger, or player-state changes.",
+      "default": true,
+      "requires-restart": true
+    },
+    "hide-ground-layer": {
+      "type": "bool",
+      "name": "Hide ground layer",
+      "description": "Hides the ground art layer to reduce visual work. Ground collision and gameplay remain active. May make the level harder to read.",
+      "default": false,
+      "requires-restart": true
+    },
+    "hide-midground-layer": {
+      "type": "bool",
+      "name": "Hide midground layer",
+      "description": "Hides the midground visual layer. Gameplay and collision remain active.",
+      "default": false,
       "requires-restart": true
     }
   }

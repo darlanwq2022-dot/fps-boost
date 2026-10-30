@@ -1,0 +1,12 @@
+GD FPS Core v0.8.0 MAX ULTRA X
+
+Validation completed:
+- mod.json parses as valid JSON.
+- All settings referenced by main.cpp are present in mod.json.
+- Source braces are balanced.
+- Added PlayLayer::init, toggleGroundVisibility and toggleMGVisibility signatures checked against the published Windows GD 2.2081 bindings.
+
+Not completed:
+- A Geode compilation was NOT run because GEODE_SDK is not installed in this environment.
+- No runtime or FPS benchmark was performed.
+- This archive is source + metadata, not a compiled .geode.

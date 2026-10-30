@@ -48,6 +48,9 @@ namespace {
     bool g_hideDecorationObjects = true;
     bool g_disableCameraShake = true;
     bool g_disablePlayerBurst = true;
+    bool g_disableBackgroundEffects = true;
+    bool g_hideGroundLayer = false;
+    bool g_hideMidgroundLayer = false;
 
     // Wave Trail remains visible. This spacing only drops very close samples.
     float g_wavePointSpacing = 0.35f;
@@ -65,6 +68,9 @@ namespace {
     bool g_profilePlayerUpdate = false;
     bool g_profileParticleUpdate = false;
     bool g_profileVisibilityUpdate = false;
+    bool g_profileWaveTrail = false;
+    bool g_profileObjectSetup = false;
+    bool g_profileObjectParsing = false;
     std::size_t g_reportInterval = 120;
 
     struct FrameSample {
@@ -74,6 +80,12 @@ namespace {
         double playerUpdateMs = 0.0;
         double particleUpdateMs = 0.0;
         double visibilityUpdateMs = 0.0;
+        double waveUpdateMs = 0.0;
+        double objectSetupMs = 0.0;
+        double objectParsingMs = 0.0;
+        std::uint32_t waveUpdateCalls = 0;
+        std::uint32_t objectSetupCalls = 0;
+        std::uint32_t objectParsingCalls = 0;
         std::uint32_t playerUpdateCalls = 0;
         std::uint32_t particleUpdateCalls = 0;
         std::uint64_t activeParticleCountSum = 0;
@@ -81,6 +93,27 @@ namespace {
     };
 
     FrameSample g_currentFrame;
+
+    // Zero work when disabled; measures only selected paths when the user
+    // explicitly enables diagnostics.
+    class ScopedFrameTimer {
+    public:
+        ScopedFrameTimer(bool enabled, double& totalMs, std::uint32_t& calls)
+          : m_enabled(enabled), m_totalMs(totalMs), m_calls(calls),
+            m_start(enabled ? Clock::now() : Clock::time_point{}) {}
+        ~ScopedFrameTimer() {
+            if (!m_enabled) return;
+            m_totalMs += std::chrono::duration<double, std::milli>(Clock::now() - m_start).count();
+            ++m_calls;
+        }
+        ScopedFrameTimer(ScopedFrameTimer const&) = delete;
+        ScopedFrameTimer& operator=(ScopedFrameTimer const&) = delete;
+    private:
+        bool m_enabled;
+        double& m_totalMs;
+        std::uint32_t& m_calls;
+        Clock::time_point m_start;
+    };
 
     struct FrameWindow {
         std::array<FrameSample, kMaxWindow> samples{};
@@ -131,6 +164,12 @@ namespace {
             double playerSum = 0.0;
             double particleSum = 0.0;
             double visibilitySum = 0.0;
+            double waveSum = 0.0;
+            double objectSetupSum = 0.0;
+            double objectParsingSum = 0.0;
+            std::uint64_t waveCalls = 0;
+            std::uint64_t objectSetupCalls = 0;
+            std::uint64_t objectParsingCalls = 0;
             std::uint32_t maxLevelObjectCount = 0;
             std::uint64_t playerCalls = 0;
             std::uint64_t particleCalls = 0;
@@ -150,6 +189,12 @@ namespace {
                 playerSum += s.playerUpdateMs;
                 particleSum += s.particleUpdateMs;
                 visibilitySum += s.visibilityUpdateMs;
+                waveSum += s.waveUpdateMs;
+                objectSetupSum += s.objectSetupMs;
+                objectParsingSum += s.objectParsingMs;
+                waveCalls += s.waveUpdateCalls;
+                objectSetupCalls += s.objectSetupCalls;
+                objectParsingCalls += s.objectParsingCalls;
                 maxLevelObjectCount = std::max(maxLevelObjectCount, s.levelObjectCount);
                 playerCalls += s.playerUpdateCalls;
                 particleCalls += s.particleUpdateCalls;
@@ -200,6 +245,24 @@ namespace {
                 log::info(
                     "[GD FPS Core] PlayLayer::updateVisibility inclusive CPU: {:.3f} ms/frame average | p95 {:.3f} ms | loaded objects {}",
                     visibilitySum / static_cast<double>(count), p95Visibility, maxLevelObjectCount
+                );
+            }
+            if (g_profileWaveTrail) {
+                log::info(
+                    "[GD FPS Core] HardStreak::updateStroke CPU: {:.4f} ms/frame average | {} executed updates/window",
+                    waveSum / static_cast<double>(count), waveCalls
+                );
+            }
+            if (g_profileObjectSetup) {
+                log::info(
+                    "[GD FPS Core] GameObject::customSetup CPU: {:.4f} ms/frame average | {} calls/window",
+                    objectSetupSum / static_cast<double>(count), objectSetupCalls
+                );
+            }
+            if (g_profileObjectParsing) {
+                log::info(
+                    "[GD FPS Core] GameObject::objectFromVector CPU: {:.4f} ms/frame average | {} calls/window",
+                    objectParsingSum / static_cast<double>(count), objectParsingCalls
                 );
             }
             log::info("[GD FPS Core] Wave Trail: points skipped {} | render refreshes skipped {}", g_wavePointsSkipped, g_waveRenderUpdatesSkipped);
@@ -333,12 +396,18 @@ namespace {
         g_profilePlayerUpdate = mod->getSettingValue<bool>("profile-player-update");
         g_profileParticleUpdate = mod->getSettingValue<bool>("profile-particle-update");
         g_profileVisibilityUpdate = mod->getSettingValue<bool>("profile-visibility-update");
+        g_profileWaveTrail = mod->getSettingValue<bool>("profile-wave-trail");
+        g_profileObjectSetup = mod->getSettingValue<bool>("profile-object-setup");
+        g_profileObjectParsing = mod->getSettingValue<bool>("profile-object-parsing");
+        g_disableBackgroundEffects = mod->getSettingValue<bool>("disable-background-effects");
+        g_hideGroundLayer = mod->getSettingValue<bool>("hide-ground-layer");
+        g_hideMidgroundLayer = mod->getSettingValue<bool>("hide-midground-layer");
         auto interval = mod->getSettingValue<int64_t>("report-interval");
         g_reportInterval = static_cast<std::size_t>(std::clamp<int64_t>(interval, 60, static_cast<int64_t>(kMaxWindow)));
     }
 
     bool profilingEnabled() {
-        return g_frameMonitorEnabled || g_profileGameUpdate || g_profilePlayerUpdate || g_profileParticleUpdate || g_profileVisibilityUpdate;
+        return g_frameMonitorEnabled || g_profileGameUpdate || g_profilePlayerUpdate || g_profileParticleUpdate || g_profileVisibilityUpdate || g_profileWaveTrail || g_profileObjectSetup || g_profileObjectParsing;
     }
 }
 
@@ -577,6 +646,9 @@ class $modify(GDFPSCoreGameObject, GameObject) {
             gameLayer->m_extraLDM = true;
             lowDetail = true;
         }
+        ScopedFrameTimer parseTimer(
+            g_profileObjectParsing, g_currentFrame.objectParsingMs, g_currentFrame.objectParsingCalls
+        );
         return GameObject::objectFromVector(propValues, propIsPresent, gameLayer, lowDetail);
     }
 
@@ -598,6 +670,9 @@ class $modify(GDFPSCoreGameObject, GameObject) {
     }
 
     void customSetup() {
+        ScopedFrameTimer setupTimer(
+            g_profileObjectSetup, g_currentFrame.objectSetupMs, g_currentFrame.objectSetupCalls
+        );
         GameObject::customSetup();
         applyProfileOnce();
         if (shouldHideLevelObject(this)) {
@@ -651,6 +726,9 @@ class $modify(GDFPSCoreHardStreak, HardStreak) {
                 return;
             }
         }
+        ScopedFrameTimer waveTimer(
+            g_profileWaveTrail, g_currentFrame.waveUpdateMs, g_currentFrame.waveUpdateCalls
+        );
         HardStreak::updateStroke(dt);
     }
 
@@ -740,6 +818,27 @@ class $modify(GDFPSCoreHardStreak, HardStreak) {
 };
 
 class $modify(GDFPSCorePlayLayer, PlayLayer) {
+    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
+
+        // These are visual-only toggles. The ground collision map, object
+        // activation and player physics remain owned by the game engine.
+        if (g_disableBackgroundEffects) {
+            GJBaseGameLayer::toggleBGEffectVisibility(false);
+        }
+        if (g_hideGroundLayer) PlayLayer::toggleGroundVisibility(false);
+        if (g_hideMidgroundLayer) PlayLayer::toggleMGVisibility(false);
+        return true;
+    }
+
+    void toggleGroundVisibility(bool visible) {
+        PlayLayer::toggleGroundVisibility(g_hideGroundLayer ? false : visible);
+    }
+
+    void toggleMGVisibility(bool visible) {
+        PlayLayer::toggleMGVisibility(g_hideMidgroundLayer ? false : visible);
+    }
+
     void updateVisibility(float dt) {
         if (!g_profileVisibilityUpdate) {
             PlayLayer::updateVisibility(dt);
