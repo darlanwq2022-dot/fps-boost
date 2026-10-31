@@ -1,23 +1,40 @@
-# GD FPS Core v0.8.2 — Stability Hotfix
+# GD FPS Core v0.9.0 — Profiling Engine Foundation
 
-A Geode mod for Geometry Dash Windows 2.2081 targeting visual-workload reduction while preserving native gameplay processing.
+Windows / Geometry Dash 2.2081 / Geode 5.11.2.
 
-## Stability changes
-- `PlayLayer::init` is no longer hooked to invoke visibility toggles during construction.
-- Native player particle children are attached by the original `PlayerObject::addAllParticles`.
-- `GameObject::createAndAddParticle` keeps the engine's original return contract; optional emitters are stopped/hidden after creation.
-- The Cocos scheduler is not modified from particle setup/update callbacks.
-- `GJBaseGameLayer::updateParticles` always runs, preserving engine bookkeeping.
+## Purpose
 
-## Retained optimizations
-- Supported particle-trigger and particle-system suppression.
-- Player/object glow and secondary-effect suppression.
-- Native Extra LDM use for High Detail objects.
-- Optional hiding of gameplay decorations without altering trigger objects.
-- Wave Trail point reduction and bounded point storage.
-- Optional CPU profiling for scene, player, particle, visibility, Wave Trail, object setup and parser paths.
+This release establishes a more trustworthy measurement baseline before adding deeper engine changes. It improves frame-cadence reporting, computes a slowest-1%-average estimate correctly, adds configurable subsystem sampling to reduce profiler overhead, and uses honest timing labels.
 
-## Important
-- This package has not been compiled with the Windows Geode SDK in this environment and has not been launched in-game here.
-- If the game still crashes on level entry, send the Geode crash log and specify whether it crashes before the level appears, during loading, or immediately after gameplay starts.
-- The mod does not guarantee a specific FPS gain; benchmark on the same level and settings.
+## What is measured
+
+- `CCDirector::drawScene` call interval: approximate frame-call cadence, not guaranteed display-present FPS.
+- `CCDirector::drawScene` wall duration: elapsed wall time inside the call, which can include waiting/blocking and is not a pure CPU or GPU timer.
+- Optional inclusive elapsed-time scopes: `GJBaseGameLayer::update`, `PlayerObject::update`, particle update, visibility update, Wave Trail update, object setup and object parsing.
+- Frame budget counts above 16.67 ms, 8.33 ms and 4.17 ms.
+- One interval immediately after each report is discarded so synchronous log output is not counted as a game hitch.
+- Correct slowest-1%-average estimate for each reporting window.
+
+Nested timing scopes overlap. Do not add `GJBaseGameLayer::update` to `PlayerObject::update` or other nested timings.
+
+## Profiler overhead
+
+Frame cadence is captured on every `drawScene` call while the monitor is enabled. Detailed subsystem timers run on 1 of every N frames (`Subsystem sampling interval`, default 4). Set it to 1 for denser samples or 8/16 for lower diagnostic overhead. Disable the profiler for normal gameplay after collecting a baseline.
+
+## Actual optimizations retained
+
+- Suppression of supported particle triggers and stopped optional emitters.
+- Native Extra LDM for gameplay parsing, which can omit High Detail objects before normal runtime use.
+- Hiding decoration-only nodes and secondary glow/shine/flash visuals. Hidden decoration nodes may remain allocated and may still be visited by game-side object loops; this is not CPU object removal.
+- Wave Trail remains enabled. Default settings now avoid skipping renderer refreshes and use less aggressive point thinning. More aggressive options remain configurable.
+- No changes to player physics, collision, triggers or input loops.
+
+## Not implemented in this release
+
+Custom Cocos renderer, static sprite batching, a replacement spatial index, hierarchical culling, custom collision broadphase, GPU timestamp queries, or a memory pool. These require deeper engine-level work and separate validation; the mod does not claim these features.
+
+## Build
+
+Requires Geode SDK 5.11.2 and a C++23 toolchain. Set `GEODE_SDK` and build with CMake/Ninja or `geode build`.
+
+A successful source-package validation is not a substitute for a build with the target SDK. This environment does not include the Geode SDK, so a real `.geode` binary has not been produced here.

@@ -1,11 +1,11 @@
-GD FPS Core v0.8.2 — Stability Hotfix
+GD FPS Core v0.9.0 — source validation status
 
-Changes made in response to a crash when entering a level:
-- Removed PlayLayer::init visibility toggles, including the init-time background-effect call.
-- Removed the PlayerObject::addAllParticles early return; native particle nodes are attached normally.
-- Preserved GameObject::createAndAddParticle original return value; optional emitters are stopped/hidden after creation instead of returning nullptr.
-- Removed unscheduleUpdate calls from particle setup/update paths to avoid mutating Cocos scheduler state during callbacks.
-- Restored GJBaseGameLayer::updateParticles bookkeeping; visual particle suppression remains at emitter/trigger entry points.
-- Removed init-time ground/midground visibility options that depended on the unsafe PlayLayer initialization hook.
-
-Validation in this environment: source edits reviewed; mod.json parsed; ZIP integrity checked. A Windows Geode SDK build and in-game launch test have NOT been run here.
+- mod.json: parsed successfully with Python json parser.
+- All 39 getSettingValue references match declared settings.
+- C++ lexical delimiter check: passed.
+- Synthetic 1% low math check: passed (118 x 1 ms, 1 x 2 ms, 1 x 4 ms -> slowest-1%-average estimate 333.3 FPS).
+- ZIP: passed `unzip -t` integrity check.
+- C++ full compile: NOT RUN. GEODE_SDK is not available in this environment.
+- No .geode binary is included.
+- Target in metadata: Geometry Dash Windows 2.2081, Geode 5.11.2.
+- Timing metrics: drawScene call cadence and wall duration are estimates; no GPU timestamp queries or guaranteed display-present FPS are claimed.

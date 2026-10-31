@@ -5,75 +5,75 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.8.2",
+  "version": "v0.9.0",
   "developer": "GD FPS Core contributors",
-  "description": "Stability hotfix: preserves native PlayLayer construction, particle factory return values, PlayerObject particle attachment, and Cocos scheduler bookkeeping while retaining supported visual optimizations.",
+  "description": "Profiling Engine Foundation: more accurate frame-cadence and 1% low reporting, configurable low-overhead subsystem sampling, truthful timing labels, and balanced Wave Trail defaults. Retains established visual reductions.",
   "settings": {
     "perf-header": {
       "type": "title",
       "name": "Performance Profiler",
-      "description": "Profiling is disabled by default to minimize monitoring overhead. Enable only when diagnosing performance."
+      "description": "Accurate diagnostics first. Frame cadence is not the same as GPU-present FPS. Detailed subsystem timing is sampled at a configurable interval to reduce measurement overhead."
     },
     "frame-monitor": {
       "type": "bool",
       "name": "Frame cadence monitor",
-      "description": "Measures the interval between drawScene calls and the CPU time spent inside drawScene. This is not a GPU timer or exact monitor-present FPS.",
+      "description": "Measures intervals between drawScene calls and wall duration inside drawScene. Reports average cadence, p95/p99/max, true slowest-1%-average estimate, and frame-budget threshold counts. Not a GPU timer or guaranteed monitor-present FPS.",
       "default": false,
       "requires-restart": true
     },
     "profile-game-update": {
       "type": "bool",
       "name": "Profile main game update",
-      "description": "Measures inclusive CPU time in GJBaseGameLayer::update. Adds small measurement overhead.",
+      "description": "Measures inclusive elapsed time in GJBaseGameLayer::update on sampled frames. This timer overlaps nested update timers; do not add them together.",
       "default": false,
       "requires-restart": true
     },
     "profile-player-update": {
       "type": "bool",
       "name": "Profile player updates",
-      "description": "Measures CPU time in PlayerObject::update and counts update calls. Adds small measurement overhead.",
+      "description": "Measures inclusive elapsed time in PlayerObject::update on sampled frames. This timer overlaps the main game update timer.",
       "default": false,
       "requires-restart": true
     },
     "profile-particle-update": {
       "type": "bool",
       "name": "Profile particle simulation",
-      "description": "Measures CCParticleSystem::update time, counts calls and samples active particle counts. Adds measurement overhead.",
+      "description": "Measures elapsed time in CCParticleSystem::update on sampled frames and counts calls/particle observations.",
       "default": false,
       "requires-restart": true
     },
     "profile-visibility-update": {
       "type": "bool",
       "name": "Profile PlayLayer object visibility update",
-      "description": "Measures CPU time in PlayLayer::updateVisibility and reports the loaded level object count. Adds small diagnostic overhead.",
+      "description": "Measures inclusive elapsed time in PlayLayer::updateVisibility on sampled frames and reports the maximum observed loaded object count.",
       "default": false,
       "requires-restart": true
     },
     "profile-wave-trail": {
       "type": "bool",
       "name": "Profile Wave Trail renderer",
-      "description": "Measures executed HardStreak::updateStroke CPU time. Diagnostic only; adds timing overhead while enabled.",
+      "description": "Measures elapsed time in HardStreak::updateStroke on sampled frames. Diagnostic only.",
       "default": false,
       "requires-restart": true
     },
     "profile-object-setup": {
       "type": "bool",
       "name": "Profile GameObject setup",
-      "description": "Measures GameObject::customSetup CPU time while objects are created/configured. Diagnostic only; adds timing overhead while enabled.",
+      "description": "Measures elapsed time in GameObject::customSetup on sampled frames. Object creation may happen during level load.",
       "default": false,
       "requires-restart": true
     },
     "profile-object-parsing": {
       "type": "bool",
       "name": "Profile object parser",
-      "description": "Measures GameObject::objectFromVector CPU time, useful for large level loading/creation spikes. Diagnostic only; adds timing overhead while enabled.",
+      "description": "Measures elapsed time in GameObject::objectFromVector on sampled frames. Object parsing may happen during level load.",
       "default": false,
       "requires-restart": true
     },
     "report-interval": {
       "type": "int",
       "name": "Report interval (frames)",
-      "description": "Number of frame samples in each report. Higher values smooth out short spikes.",
+      "description": "Number of drawScene-call samples in each report. Higher values smooth short spikes.",
       "default": 120,
       "min": 60,
       "max": 600,
@@ -82,10 +82,22 @@
       },
       "requires-restart": true
     },
+    "profile-sampling-interval": {
+      "type": "int",
+      "name": "Subsystem sampling interval",
+      "description": "Runs detailed subsystem timers on 1 of every N frames to reduce profiler overhead. Frame cadence remains sampled every drawScene call.",
+      "default": 4,
+      "min": 1,
+      "max": 16,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
     "visual-header": {
       "type": "title",
       "name": "EXTREME VISUAL REDUCTION",
-      "description": "MAX ULTRA profile: suppress supported particle triggers and emitters, stop/hide optional particle systems without modifying Cocos scheduler state, remove supported player/object secondary visuals, force native Extra LDM, and hide gameplay decorations. PlayLayer initialization and gameplay physics/trigger/collision/input handling are left to the game. The Wave Trail is kept but its stored geometry is simplified and bounded."
+      "description": "Established visual reductions: stop supported optional particle effects, hide secondary visuals, force native Extra LDM for gameplay and hide decoration-only nodes. These reduce visual work; hidden decorations can still remain allocated and may still participate in game-side object loops."
     },
     "disable-all-particles": {
       "type": "bool",
@@ -202,8 +214,8 @@
     "wave-point-spacing": {
       "type": "float",
       "name": "Wave Trail minimum point spacing",
-      "description": "Minimum squared-distance filter for closely spaced Wave Trail points. Larger spacing reduces geometry; sharp turns are retained.",
-      "default": 0.35,
+      "description": "Minimum distance filter for near-duplicate Wave Trail points. Lower values preserve more geometry; 0 disables spacing-based dropping.",
+      "default": 0.15,
       "min": 0.0,
       "max": 1.0,
       "control": {
@@ -214,8 +226,8 @@
     "wave-trail-sample-step": {
       "type": "int",
       "name": "Wave Trail sample reduction",
-      "description": "Keep approximately one point per N incoming straight-line samples. 4 is the aggressive default; sharp turns and long gaps force extra points to preserve the trail shape.",
-      "default": 4,
+      "description": "Keep approximately one point per N straight-line input samples. 1 preserves every sample; sharp turns and long gaps still force extra points.",
+      "default": 2,
       "min": 1,
       "max": 4,
       "control": {
@@ -226,8 +238,8 @@
     "wave-trail-max-gap": {
       "type": "float",
       "name": "Wave Trail maximum segment gap",
-      "description": "Forces a new Wave Trail point after this distance. Larger values reduce the retained geometry but can make the trail more angular.",
-      "default": 8.0,
+      "description": "Force a new Wave Trail point after this distance. Smaller values preserve curvature and reduce visible gaps.",
+      "default": 6.0,
       "min": 1.0,
       "max": 12.0,
       "control": {
@@ -238,8 +250,8 @@
     "wave-trail-max-points": {
       "type": "int",
       "name": "Wave Trail maximum retained points",
-      "description": "Hard cap for the Wave Trail point array. Lower values reduce its memory use and geometry cost, but shorten the visible trail. The Wave Trail itself stays enabled.",
-      "default": 96,
+      "description": "Hard cap for retained Wave Trail points. Higher values preserve a longer trail but use more memory/geometry.",
+      "default": 128,
       "min": 16,
       "max": 256,
       "control": {
@@ -292,8 +304,8 @@
     "wave-trail-render-step": {
       "type": "int",
       "name": "Wave Trail renderer refresh interval",
-      "description": "Rebuild Wave Trail geometry once every N scheduled updates. Default 2 halves its geometry rebuild cadence while keeping the last rendered trail visible.",
-      "default": 2,
+      "description": "Renderer refresh interval. 1 updates every scheduled frame and is the recommended smooth setting; larger values reduce work but can visibly stutter the trail.",
+      "default": 1,
       "min": 1,
       "max": 3,
       "control": {

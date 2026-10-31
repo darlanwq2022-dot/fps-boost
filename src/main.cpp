@@ -50,11 +50,13 @@ namespace {
     bool g_disablePlayerBurst = true;
 
     // Wave Trail remains visible. This spacing only drops very close samples.
-    float g_wavePointSpacing = 0.35f;
-    int g_waveSampleStep = 4;
-    int g_waveRenderStep = 2;
-    float g_waveMaxGap = 8.0f;
-    std::size_t g_waveMaxPoints = 96;
+    // Balanced defaults preserve a smooth Wave Trail. More aggressive thinning
+    // remains user-configurable, but the default no longer skips renderer frames.
+    float g_wavePointSpacing = 0.15f;
+    int g_waveSampleStep = 2;
+    int g_waveRenderStep = 1;
+    float g_waveMaxGap = 6.0f;
+    std::size_t g_waveMaxPoints = 128;
     std::uint64_t g_wavePointsSkipped = 0;
     std::uint64_t g_waveRenderUpdatesSkipped = 0;
 
@@ -69,10 +71,13 @@ namespace {
     bool g_profileObjectSetup = false;
     bool g_profileObjectParsing = false;
     std::size_t g_reportInterval = 120;
+    std::size_t g_profileSampleEveryNFrames = 4;
+    std::uint64_t g_frameSequence = 0;
 
     struct FrameSample {
+        bool profileSampled = false;
         double intervalMs = 0.0;
-        double sceneCpuMs = 0.0;
+        double drawSceneWallMs = 0.0;
         double gameUpdateMs = 0.0;
         double playerUpdateMs = 0.0;
         double particleUpdateMs = 0.0;
@@ -116,6 +121,7 @@ namespace {
         std::array<FrameSample, kMaxWindow> samples{};
         std::size_t count = 0;
         bool hasPreviousFrameStart = false;
+        bool skipNextIntervalAfterReport = false;
         Clock::time_point previousFrameStart{};
 
         double markFrameStart(Clock::time_point now) {
@@ -125,6 +131,13 @@ namespace {
             }
             previousFrameStart = now;
             hasPreviousFrameStart = true;
+            if (skipNextIntervalAfterReport) {
+                // Reporting uses synchronous logging after a frame. Discard
+                // the next interval so the profiler's own log write is not
+                // misreported as a game hitch.
+                skipNextIntervalAfterReport = false;
+                return 0.0;
+            }
             return intervalMs;
         }
 
@@ -136,6 +149,7 @@ namespace {
             if (count >= g_reportInterval) {
                 report();
                 count = 0;
+                skipNextIntervalAfterReport = true;
             }
         }
 
@@ -149,11 +163,8 @@ namespace {
             if (count == 0) return;
 
             std::array<double, kMaxWindow> intervals{};
-            std::array<double, kMaxWindow> sceneCpu{};
-            std::array<double, kMaxWindow> gameCpu{};
-            std::array<double, kMaxWindow> playerCpu{};
-            std::array<double, kMaxWindow> particleCpu{};
-            std::array<double, kMaxWindow> visibilityCpu{};
+            std::array<double, kMaxWindow> sceneWall{};
+            std::array<double, kMaxWindow> visibilityElapsed{};
 
             double intervalSum = 0.0;
             double sceneSum = 0.0;
@@ -167,105 +178,141 @@ namespace {
             std::uint64_t waveCalls = 0;
             std::uint64_t objectSetupCalls = 0;
             std::uint64_t objectParsingCalls = 0;
-            std::uint32_t maxLevelObjectCount = 0;
             std::uint64_t playerCalls = 0;
             std::uint64_t particleCalls = 0;
             std::uint64_t activeParticleSum = 0;
+            std::uint32_t maxLevelObjectCount = 0;
+            std::size_t profiledFrames = 0;
+            std::size_t profiledIndex = 0;
+            std::size_t over16ms = 0;
+            std::size_t over8ms = 0;
+            std::size_t over4ms = 0;
 
             for (std::size_t i = 0; i < count; ++i) {
-                auto const& s = samples[i];
-                intervals[i] = s.intervalMs;
-                sceneCpu[i] = s.sceneCpuMs;
-                gameCpu[i] = s.gameUpdateMs;
-                playerCpu[i] = s.playerUpdateMs;
-                particleCpu[i] = s.particleUpdateMs;
-                visibilityCpu[i] = s.visibilityUpdateMs;
-                intervalSum += s.intervalMs;
-                sceneSum += s.sceneCpuMs;
-                gameSum += s.gameUpdateMs;
-                playerSum += s.playerUpdateMs;
-                particleSum += s.particleUpdateMs;
-                visibilitySum += s.visibilityUpdateMs;
-                waveSum += s.waveUpdateMs;
-                objectSetupSum += s.objectSetupMs;
-                objectParsingSum += s.objectParsingMs;
-                waveCalls += s.waveUpdateCalls;
-                objectSetupCalls += s.objectSetupCalls;
-                objectParsingCalls += s.objectParsingCalls;
-                maxLevelObjectCount = std::max(maxLevelObjectCount, s.levelObjectCount);
-                playerCalls += s.playerUpdateCalls;
-                particleCalls += s.particleUpdateCalls;
-                activeParticleSum += s.activeParticleCountSum;
+                auto const& sample = samples[i];
+                intervals[i] = sample.intervalMs;
+                sceneWall[i] = sample.drawSceneWallMs;
+                intervalSum += sample.intervalMs;
+                sceneSum += sample.drawSceneWallMs;
+                if (sample.intervalMs > 16.6667) ++over16ms;
+                if (sample.intervalMs > 8.3333) ++over8ms;
+                if (sample.intervalMs > 4.1667) ++over4ms;
+                maxLevelObjectCount = std::max(maxLevelObjectCount, sample.levelObjectCount);
+
+                if (sample.profileSampled) {
+                    ++profiledFrames;
+                    visibilityElapsed[profiledIndex] = sample.visibilityUpdateMs;
+                    ++profiledIndex;
+                    gameSum += sample.gameUpdateMs;
+                    playerSum += sample.playerUpdateMs;
+                    particleSum += sample.particleUpdateMs;
+                    visibilitySum += sample.visibilityUpdateMs;
+                    waveSum += sample.waveUpdateMs;
+                    objectSetupSum += sample.objectSetupMs;
+                    objectParsingSum += sample.objectParsingMs;
+                    waveCalls += sample.waveUpdateCalls;
+                    objectSetupCalls += sample.objectSetupCalls;
+                    objectParsingCalls += sample.objectParsingCalls;
+                    playerCalls += sample.playerUpdateCalls;
+                    particleCalls += sample.particleUpdateCalls;
+                    activeParticleSum += sample.activeParticleCountSum;
+                }
             }
 
-            auto intervalSorted = intervals;
-            auto sceneSorted = sceneCpu;
-            auto visibilitySorted = visibilityCpu;
+            auto intervalsSorted = intervals;
+            auto sceneSorted = sceneWall;
+            auto visibilitySorted = visibilityElapsed;
+            std::sort(intervalsSorted.begin(), intervalsSorted.begin() + static_cast<std::ptrdiff_t>(count));
+            const auto percentileIndex = [count](double p) {
+                return std::min(static_cast<std::size_t>(p * static_cast<double>(count - 1)), count - 1);
+            };
             const double avgInterval = intervalSum / static_cast<double>(count);
-            const double p95Interval = percentile(intervalSorted, count, 0.95);
-            const double p99Interval = percentile(intervalSorted, count, 0.99);
-            const double maxInterval = *std::max_element(intervals.begin(), intervals.begin() + static_cast<std::ptrdiff_t>(count));
-            const double avgScene = sceneSum / static_cast<double>(count);
-            const double p95Scene = percentile(sceneSorted, count, 0.95);
-            const double p95Visibility = percentile(visibilitySorted, count, 0.95);
-            const double callRate = avgInterval > 0.0 ? 1000.0 / avgInterval : 0.0;
+            const double p95Interval = intervalsSorted[percentileIndex(0.95)];
+            const double p99Interval = intervalsSorted[percentileIndex(0.99)];
+            const double minInterval = intervalsSorted.front();
+            const double maxInterval = intervalsSorted[count - 1];
+            const double avgSceneWall = sceneSum / static_cast<double>(count);
+            const double p95SceneWall = percentile(sceneSorted, count, 0.95);
+            const double avgFpsEstimate = avgInterval > 0.0 ? 1000.0 / avgInterval : 0.0;
+
+            // Correct 1% low: average the slowest ceil(1% of frame intervals),
+            // then invert that duration. Reuse the sorted interval buffer.
+            const std::size_t slowFrameCount = std::max<std::size_t>(1, (count + 99) / 100);
+            double slowFrameSum = 0.0;
+            for (std::size_t i = count - slowFrameCount; i < count; ++i) {
+                slowFrameSum += intervalsSorted[i];
+            }
+            const double slowestAverageMs = slowFrameSum / static_cast<double>(slowFrameCount);
+            const double onePercentLow = slowestAverageMs > 0.0 ? 1000.0 / slowestAverageMs : 0.0;
+            const double profileDenominator = static_cast<double>(std::max<std::size_t>(1, profiledFrames));
 
             log::info(
-                "[GD FPS Core] Frame cadence ({} frames): avg {:.3f} ms | p95 {:.3f} ms | p99 {:.3f} ms | max {:.3f} ms | approx {:.1f} drawScene calls/s | estimated 1% low {:.1f}",
-                count, avgInterval, p95Interval, p99Interval, maxInterval, callRate,
-                p99Interval > 0.0 ? 1000.0 / p99Interval : 0.0
+                "[GD FPS Core] drawScene call cadence ({} frames): avg {:.3f} ms ({:.1f} estimated calls/s) | min {:.3f} | p95 {:.3f} | p99 {:.3f} | max {:.3f} | 1% low {:.1f} (slowest {} frames)",
+                count, avgInterval, avgFpsEstimate, minInterval, p95Interval, p99Interval, maxInterval,
+                onePercentLow, slowFrameCount
             );
             log::info(
-                "[GD FPS Core] drawScene CPU: avg {:.3f} ms/frame | p95 {:.3f} ms",
-                avgScene, p95Scene
+                "[GD FPS Core] drawScene wall duration: avg {:.3f} ms | p95 {:.3f} ms | cadence thresholds: >16.67ms {} ({:.1f}%), >8.33ms {} ({:.1f}%), >4.17ms {} ({:.1f}%)",
+                avgSceneWall, p95SceneWall,
+                over16ms, 100.0 * static_cast<double>(over16ms) / static_cast<double>(count),
+                over8ms, 100.0 * static_cast<double>(over8ms) / static_cast<double>(count),
+                over4ms, 100.0 * static_cast<double>(over4ms) / static_cast<double>(count)
             );
 
             if (g_profileGameUpdate) {
                 log::info(
-                    "[GD FPS Core] GJBaseGameLayer::update inclusive CPU: {:.3f} ms/frame average",
-                    gameSum / static_cast<double>(count)
+                    "[GD FPS Core] GJBaseGameLayer::update inclusive elapsed: {:.4f} ms/profiled-frame average ({} sampled frames)",
+                    gameSum / profileDenominator, profiledFrames
                 );
             }
             if (g_profilePlayerUpdate) {
                 log::info(
-                    "[GD FPS Core] PlayerObject::update inclusive CPU: {:.3f} ms/frame average | {} calls/window",
-                    playerSum / static_cast<double>(count), playerCalls
+                    "[GD FPS Core] PlayerObject::update inclusive elapsed: {:.4f} ms/profiled-frame average | {} calls in sampled frames",
+                    playerSum / profileDenominator, playerCalls
                 );
             }
             if (g_profileParticleUpdate) {
                 log::info(
-                    "[GD FPS Core] CCParticleSystem::update CPU: {:.3f} ms/frame average | {} calls/window | summed live-particle observations {}",
-                    particleSum / static_cast<double>(count), particleCalls, activeParticleSum
+                    "[GD FPS Core] CCParticleSystem::update elapsed: {:.4f} ms/profiled-frame average | {} calls | summed live-particle observations {}",
+                    particleSum / profileDenominator, particleCalls, activeParticleSum
                 );
             }
             if (g_profileVisibilityUpdate) {
                 log::info(
-                    "[GD FPS Core] PlayLayer::updateVisibility inclusive CPU: {:.3f} ms/frame average | p95 {:.3f} ms | loaded objects {}",
-                    visibilitySum / static_cast<double>(count), p95Visibility, maxLevelObjectCount
+                    "[GD FPS Core] PlayLayer::updateVisibility inclusive elapsed: {:.4f} ms/profiled-frame average | p95 {:.4f} ms | max loaded objects {}",
+                    visibilitySum / profileDenominator,
+                    profiledFrames ? percentile(visibilitySorted, profiledFrames, 0.95) : 0.0,
+                    maxLevelObjectCount
                 );
             }
             if (g_profileWaveTrail) {
                 log::info(
-                    "[GD FPS Core] HardStreak::updateStroke CPU: {:.4f} ms/frame average | {} executed updates/window",
-                    waveSum / static_cast<double>(count), waveCalls
+                    "[GD FPS Core] HardStreak::updateStroke elapsed: {:.5f} ms/profiled-frame average | {} calls in sampled frames",
+                    waveSum / profileDenominator, waveCalls
                 );
             }
             if (g_profileObjectSetup) {
                 log::info(
-                    "[GD FPS Core] GameObject::customSetup CPU: {:.4f} ms/frame average | {} calls/window",
-                    objectSetupSum / static_cast<double>(count), objectSetupCalls
+                    "[GD FPS Core] GameObject::customSetup elapsed: {:.5f} ms/profiled-frame average | {} calls in sampled frames",
+                    objectSetupSum / profileDenominator, objectSetupCalls
                 );
             }
             if (g_profileObjectParsing) {
                 log::info(
-                    "[GD FPS Core] GameObject::objectFromVector CPU: {:.4f} ms/frame average | {} calls/window",
-                    objectParsingSum / static_cast<double>(count), objectParsingCalls
+                    "[GD FPS Core] GameObject::objectFromVector elapsed: {:.5f} ms/profiled-frame average | {} calls in sampled frames",
+                    objectParsingSum / profileDenominator, objectParsingCalls
                 );
             }
-            log::info("[GD FPS Core] Wave Trail: points skipped {} | render refreshes skipped {}", g_wavePointsSkipped, g_waveRenderUpdatesSkipped);
+            log::info(
+                "[GD FPS Core] Sampling: subsystem timers active on 1 of every {} frames; {} of {} frames sampled. Inclusive timers overlap and must not be added together.",
+                g_profileSampleEveryNFrames, profiledFrames, count
+            );
+            log::info(
+                "[GD FPS Core] Wave Trail: skipped input points {} | skipped renderer refreshes {}. drawScene cadence is not a GPU timer or guaranteed display-present FPS.",
+                g_wavePointsSkipped, g_waveRenderUpdatesSkipped
+            );
             g_wavePointsSkipped = 0;
             g_waveRenderUpdatesSkipped = 0;
-            log::info("[GD FPS Core] Note: drawScene cadence is a frame-call estimate, not a GPU timer or guaranteed monitor-present FPS.");
         }
     };
 
@@ -397,6 +444,8 @@ namespace {
         g_profileObjectParsing = mod->getSettingValue<bool>("profile-object-parsing");
         auto interval = mod->getSettingValue<int64_t>("report-interval");
         g_reportInterval = static_cast<std::size_t>(std::clamp<int64_t>(interval, 60, static_cast<int64_t>(kMaxWindow)));
+        auto sampleEvery = mod->getSettingValue<int64_t>("profile-sampling-interval");
+        g_profileSampleEveryNFrames = static_cast<std::size_t>(std::clamp<int64_t>(sampleEvery, 1, 16));
     }
 
     bool profilingEnabled() {
@@ -412,20 +461,21 @@ class $modify(GDFPSCoreDirector, cocos2d::CCDirector) {
         }
 
         g_currentFrame = FrameSample{};
+        g_currentFrame.profileSampled = (g_frameSequence++ % g_profileSampleEveryNFrames) == 0;
         const auto frameStart = Clock::now();
         g_currentFrame.intervalMs = g_frameWindow.markFrameStart(frameStart);
 
         cocos2d::CCDirector::drawScene();
 
         const auto frameEnd = Clock::now();
-        g_currentFrame.sceneCpuMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
+        g_currentFrame.drawSceneWallMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
         g_frameWindow.push(g_currentFrame);
     }
 };
 
 class $modify(GDFPSCoreGameLayer, GJBaseGameLayer) {
     void update(float dt) {
-        if (!g_profileGameUpdate) {
+        if (!g_profileGameUpdate || !g_currentFrame.profileSampled) {
             GJBaseGameLayer::update(dt);
             return;
         }
@@ -477,7 +527,7 @@ class $modify(GDFPSCorePlayerObject, PlayerObject) {
     };
 
     void update(float dt) {
-        const bool measure = g_profilePlayerUpdate;
+        const bool measure = g_profilePlayerUpdate && g_currentFrame.profileSampled;
         const auto start = measure ? Clock::now() : Clock::time_point{};
         PlayerObject::update(dt);
         if (measure) {
@@ -587,7 +637,7 @@ class $modify(GDFPSCoreParticleSystem, cocos2d::CCParticleSystem) {
             return;
         }
         m_fields->suppressionApplied = false;
-        if (!g_profileParticleUpdate) {
+        if (!g_profileParticleUpdate || !g_currentFrame.profileSampled) {
             cocos2d::CCParticleSystem::update(dt);
             return;
         }
@@ -627,12 +677,14 @@ class $modify(GDFPSCoreGameObject, GameObject) {
         auto* manager = GameManager::get();
         if (g_disableHighDetailObjects && gameLayer && manager &&
             static_cast<GJBaseGameLayer*>(manager->getPlayLayer()) == gameLayer) {
-            gameLayer->m_lowDetailMode = true;
-            gameLayer->m_extraLDM = true;
+            // Avoid repeating writes for every parsed object. The engine's
+            // native LDM parser still decides which HD objects are omitted.
+            if (!gameLayer->m_lowDetailMode) gameLayer->m_lowDetailMode = true;
+            if (!gameLayer->m_extraLDM) gameLayer->m_extraLDM = true;
             lowDetail = true;
         }
         ScopedFrameTimer parseTimer(
-            g_profileObjectParsing, g_currentFrame.objectParsingMs, g_currentFrame.objectParsingCalls
+            g_profileObjectParsing && g_currentFrame.profileSampled, g_currentFrame.objectParsingMs, g_currentFrame.objectParsingCalls
         );
         return GameObject::objectFromVector(propValues, propIsPresent, gameLayer, lowDetail);
     }
@@ -656,7 +708,7 @@ class $modify(GDFPSCoreGameObject, GameObject) {
 
     void customSetup() {
         ScopedFrameTimer setupTimer(
-            g_profileObjectSetup, g_currentFrame.objectSetupMs, g_currentFrame.objectSetupCalls
+            g_profileObjectSetup && g_currentFrame.profileSampled, g_currentFrame.objectSetupMs, g_currentFrame.objectSetupCalls
         );
         GameObject::customSetup();
         applyProfileOnce();
@@ -712,7 +764,7 @@ class $modify(GDFPSCoreHardStreak, HardStreak) {
             }
         }
         ScopedFrameTimer waveTimer(
-            g_profileWaveTrail, g_currentFrame.waveUpdateMs, g_currentFrame.waveUpdateCalls
+            g_profileWaveTrail && g_currentFrame.profileSampled, g_currentFrame.waveUpdateMs, g_currentFrame.waveUpdateCalls
         );
         HardStreak::updateStroke(dt);
     }
@@ -736,7 +788,7 @@ class $modify(GDFPSCoreHardStreak, HardStreak) {
             HardStreak::addPoint(p);
             if (m_pointArray) {
                 const auto maxPoints = static_cast<unsigned int>(g_waveMaxPoints);
-                if (m_pointArray->count() > maxPoints) {
+                while (m_pointArray->count() > maxPoints) {
                     m_pointArray->removeObjectAtIndex(0);
                 }
             }
@@ -806,7 +858,7 @@ class $modify(GDFPSCorePlayLayer, PlayLayer) {
     // Deliberately do not hook PlayLayer::init or invoke layer-visibility
     // toggles during construction. The engine owns this fragile lifecycle.
     void updateVisibility(float dt) {
-        if (!g_profileVisibilityUpdate) {
+        if (!g_profileVisibilityUpdate || !g_currentFrame.profileSampled) {
             PlayLayer::updateVisibility(dt);
             return;
         }
@@ -841,10 +893,11 @@ class $modify(GDFPSCoreEffectObject, EffectGameObject) {
 
 $on_mod(Loaded) {
     loadSettings();
-    log::info("GD FPS Core v0.8.2 Stability Hotfix loaded.");
+    log::info("GD FPS Core v0.9.0 Profiling Engine Foundation loaded.");
     log::info("ULTRA profile: supported particle triggers and emitters, shader-layer animation, and player/object secondary visuals are suppressed while preserving the engine particle bookkeeping and node lifecycle.");
     log::info("Object particle factory calls preserve their original return values; optional emitters are stopped and hidden after creation, and the particle update hook avoids simulating suppressed effects.");
     log::info("Native Extra LDM filters High Detail objects before runtime-list insertion; gameplay decorations are hidden without touching trigger objects.");
-    log::info("Wave Trail stays enabled with adaptive point decimation, a hard point cap, and reduced renderer refresh frequency.");
+    log::info("Wave Trail stays enabled. Default settings now preserve every renderer refresh and use lighter point decimation; aggressive thinning remains configurable.");
+    log::info("Profiler reports drawScene call cadence and wall duration, plus opt-in subsystem elapsed-time samples. It does not claim GPU time or guaranteed display-present FPS.");
     log::info("PlayLayer construction and Cocos scheduler bookkeeping are left to the game. Gameplay update, trigger execution, collision, physics and input loops are preserved. Active gameplay objects still require CPU/memory even when secondary visuals are removed.");
 }
