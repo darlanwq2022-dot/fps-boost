@@ -38,3 +38,8 @@ Custom Cocos renderer, static sprite batching, a replacement spatial index, hier
 Requires Geode SDK 5.11.2 and a C++23 toolchain. Set `GEODE_SDK` and build with CMake/Ninja or `geode build`.
 
 A successful source-package validation is not a substitute for a build with the target SDK. This environment does not include the Geode SDK, so a real `.geode` binary has not been produced here.
+
+
+### v0.9.1 build hotfix
+
+The percentile-index lambda now captures a local snapshot of the report window size (`sampleCount`) instead of attempting to capture the `FrameWindow::count` member directly. This addresses the Clang error reported by the Windows Geode CI build.

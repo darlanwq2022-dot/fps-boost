@@ -223,8 +223,14 @@ namespace {
             auto sceneSorted = sceneWall;
             auto visibilitySorted = visibilityElapsed;
             std::sort(intervalsSorted.begin(), intervalsSorted.begin() + static_cast<std::ptrdiff_t>(count));
-            const auto percentileIndex = [count](double p) {
-                return std::min(static_cast<std::size_t>(p * static_cast<double>(count - 1)), count - 1);
+            // `count` is a FrameWindow member, not a local variable; copy its
+            // current value into a local so the lambda can capture it safely.
+            const std::size_t sampleCount = count;
+            const auto percentileIndex = [sampleCount](double p) {
+                return std::min(
+                    static_cast<std::size_t>(p * static_cast<double>(sampleCount - 1)),
+                    sampleCount - 1
+                );
             };
             const double avgInterval = intervalSum / static_cast<double>(count);
             const double p95Interval = intervalsSorted[percentileIndex(0.95)];

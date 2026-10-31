@@ -16,3 +16,9 @@
 - Preserved native PlayLayer construction and Cocos scheduler bookkeeping.
 - Preserved particle factory return values and player particle-node attachment.
 - Retained supported visual reductions and optional subsystem profiling.
+
+
+## v0.9.1 — Profiler Build Hotfix
+
+- Fixed the percentile-index lambda capture: `count` is a `FrameWindow` member, so its current value is copied into a local `sampleCount` before capture.
+- No profiler formulas, gameplay hooks, visual settings, or optimization behavior were intentionally changed.

@@ -5,9 +5,9 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.9.0",
+  "version": "v0.9.1",
   "developer": "GD FPS Core contributors",
-  "description": "Profiling Engine Foundation: more accurate frame-cadence and 1% low reporting, configurable low-overhead subsystem sampling, truthful timing labels, and balanced Wave Trail defaults. Retains established visual reductions.",
+  "description": "Profiling Engine Build Hotfix: more accurate frame-cadence and 1% low reporting, configurable low-overhead subsystem sampling, truthful timing labels, and balanced Wave Trail defaults. Retains established visual reductions.",
   "settings": {
     "perf-header": {
       "type": "title",
