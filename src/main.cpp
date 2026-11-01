@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
+#include <string>
 
 using namespace geode::prelude;
 
@@ -48,6 +49,15 @@ namespace {
     bool g_hideDecorationObjects = true;
     bool g_disableCameraShake = true;
     bool g_disablePlayerBurst = true;
+    bool g_hideGroundLayer = true;
+    bool g_hideMidgroundLayer = true;
+    bool g_disableBackgroundEffects = true;
+    bool g_hideAttemptsCounter = true;
+
+    // v0.9.4 engine-level options. Defaults are the native behavior.
+    int g_visibilityStep = 1;
+    int g_progressStep = 1;
+    bool g_highProcessPriority = false;
 
     // Wave Trail remains visible. This spacing only drops very close samples.
     // Balanced defaults preserve a smooth Wave Trail. More aggressive thinning
@@ -428,6 +438,10 @@ namespace {
         g_hideDecorationObjects = mod->getSettingValue<bool>("hide-decoration-objects");
         g_disableCameraShake = mod->getSettingValue<bool>("disable-camera-shake");
         g_disablePlayerBurst = mod->getSettingValue<bool>("disable-player-burst");
+        g_hideGroundLayer = mod->getSettingValue<bool>("hide-ground-layer");
+        g_hideMidgroundLayer = mod->getSettingValue<bool>("hide-midground-layer");
+        g_disableBackgroundEffects = mod->getSettingValue<bool>("disable-background-effects");
+        g_hideAttemptsCounter = mod->getSettingValue<bool>("hide-attempts-counter");
         g_wavePointSpacing = static_cast<float>(std::clamp<double>(
             mod->getSettingValue<double>("wave-point-spacing"), 0.0, 1.0
         ));
@@ -457,6 +471,48 @@ namespace {
         g_reportInterval = static_cast<std::size_t>(std::clamp<int64_t>(interval, 60, static_cast<int64_t>(kMaxWindow)));
         auto sampleEvery = mod->getSettingValue<int64_t>("profile-sampling-interval");
         g_profileSampleEveryNFrames = static_cast<std::size_t>(std::clamp<int64_t>(sampleEvery, 1, 16));
+
+        g_visibilityStep = static_cast<int>(std::clamp<int64_t>(mod->getSettingValue<int64_t>("visibility-update-step"), 1, 4));
+        g_progressStep = static_cast<int>(std::clamp<int64_t>(mod->getSettingValue<int64_t>("progress-update-step"), 1, 8));
+        g_highProcessPriority = mod->getSettingValue<bool>("high-process-priority");
+
+        // Presets override the individual toggles. Wave Trail is never touched.
+        auto const preset = mod->getSettingValue<std::string>("performance-preset");
+        if (preset == "Balanced") {
+            g_hideGroundLayer = false;
+            g_hideMidgroundLayer = false;
+            g_hideAttemptsCounter = false;
+            g_hideDecorationObjects = false;
+            g_disableBackgroundEffects = true;
+            g_visibilityStep = 1;
+            g_progressStep = 1;
+            g_highProcessPriority = false;
+        } else if (preset == "Extreme") {
+            g_hideGroundLayer = true;
+            g_hideMidgroundLayer = true;
+            g_hideAttemptsCounter = true;
+            g_hideDecorationObjects = true;
+            g_disableBackgroundEffects = true;
+            g_visibilityStep = 1;
+            g_progressStep = 1;
+        } else if (preset == "Insane") {
+            g_hideGroundLayer = true;
+            g_hideMidgroundLayer = true;
+            g_hideAttemptsCounter = true;
+            g_hideDecorationObjects = true;
+            g_disableBackgroundEffects = true;
+            g_visibilityStep = 2;
+            g_progressStep = 4;
+            g_highProcessPriority = true;
+        }
+        if (preset == "Balanced" || preset == "Extreme" || preset == "Insane") {
+            g_disableAllParticles = g_disableShaderUpdates = g_disableObjectGlow = g_disableObjectParticles = true;
+            g_disablePlayerParticles = g_disablePlayerGlow = g_disableObjectShine = g_disableTriggerFlash = true;
+            g_disableRingPulse = g_disablePlayerCircleEffects = g_disableSpiderDashVisual = g_disableDeathEffect = true;
+            g_disableNonWaveTrail = g_disableGhostEffect = g_disableSceneGlitter = g_disableGravityTransitionVisual = true;
+            g_disablePlayerFire = g_disablePlayerImpact = g_disablePlayerCompletion = g_disablePlayerSpawn = true;
+            g_disableHighDetailObjects = g_disableCameraShake = g_disablePlayerBurst = true;
+        }
     }
 
     bool profilingEnabled() {
@@ -866,9 +922,63 @@ class $modify(GDFPSCoreHardStreak, HardStreak) {
 };
 
 class $modify(GDFPSCorePlayLayer, PlayLayer) {
-    // Deliberately do not hook PlayLayer::init or invoke layer-visibility
-    // toggles during construction. The engine owns this fragile lifecycle.
+    struct Fields {
+        std::uint32_t visibilityCounter = 0;
+        std::uint32_t progressCounter = 0;
+        bool forceVisibility = true;
+    };
+
+    // After any reset (death, restart, startpos, practice checkpoint) the
+    // native visibility pass must run immediately so nothing stays stale.
+    void resetLevel() {
+        PlayLayer::resetLevel();
+        m_fields->forceVisibility = true;
+    }
+
+    // Cosmetic HUD refresh only; the real completion/percent logic is not skipped.
+    void updateProgressbar() {
+        if (g_progressStep > 1) {
+            if ((m_fields->progressCounter++ % static_cast<std::uint32_t>(g_progressStep)) != 0) return;
+        }
+        PlayLayer::updateProgressbar();
+    }
+
+    // Apply optional scene reductions after the layer has completed its enter
+    // transition. This avoids touching partially-constructed PlayLayer nodes.
+    void onEnterTransitionDidFinish() {
+        PlayLayer::onEnterTransitionDidFinish();
+        if (g_hideGroundLayer) PlayLayer::toggleGroundVisibility(false);
+        if (g_hideMidgroundLayer) PlayLayer::toggleMGVisibility(false);
+        if (g_disableBackgroundEffects) PlayLayer::toggleBGEffectVisibility(false);
+        if (g_hideAttemptsCounter) PlayLayer::toggleHideAttempts(true);
+    }
+
+    void toggleGroundVisibility(bool visible) {
+        PlayLayer::toggleGroundVisibility(g_hideGroundLayer ? false : visible);
+    }
+
+    void toggleMGVisibility(bool visible) {
+        PlayLayer::toggleMGVisibility(g_hideMidgroundLayer ? false : visible);
+    }
+
+    void toggleBGEffectVisibility(bool enabled) {
+        PlayLayer::toggleBGEffectVisibility(g_disableBackgroundEffects ? false : enabled);
+    }
+
+    void toggleHideAttempts(bool hide) {
+        PlayLayer::toggleHideAttempts(g_hideAttemptsCounter ? true : hide);
+    }
+
     void updateVisibility(float dt) {
+        // EXPERIMENTAL: thin the native visibility pass. Never skipped on the
+        // first call or right after a reset; objects/gameplay still update.
+        if (g_visibilityStep > 1 && !m_fields->forceVisibility) {
+            if ((m_fields->visibilityCounter++ % static_cast<std::uint32_t>(g_visibilityStep)) != 0) {
+                return;
+            }
+        }
+        m_fields->forceVisibility = false;
+
         if (!g_profileVisibilityUpdate || !g_currentFrame.profileSampled) {
             PlayLayer::updateVisibility(dt);
         } else {
@@ -932,11 +1042,22 @@ class $modify(GDFPSCoreEffectObject, EffectGameObject) {
 
 $on_mod(Loaded) {
     loadSettings();
-    log::info("GD FPS Core v0.9.2 Bismuth Research Build loaded.");
+#ifdef GEODE_IS_WINDOWS
+    if (g_highProcessPriority) {
+        if (SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS)) {
+            log::info("Process priority set to Above Normal.");
+        } else {
+            log::warn("Could not raise process priority.");
+        }
+    }
+#endif
+    log::info("GD FPS Core v0.9.4 loaded. Preset: {} | visibility step {} | progress step {}.",
+        Mod::get()->getSettingValue<std::string>("performance-preset"), g_visibilityStep, g_progressStep);
     log::info("ULTRA profile: supported particle triggers and emitters, shader-layer animation, and player/object secondary visuals are suppressed while preserving the engine particle bookkeeping and node lifecycle.");
     log::info("Object particle factory calls preserve their original return values; optional emitters are stopped and hidden after creation, and the particle update hook avoids simulating suppressed effects.");
     log::info("Native Extra LDM filters High Detail objects before runtime-list insertion; gameplay decorations are hidden without touching trigger objects.");
     log::info("Wave Trail stays enabled. Default settings preserve every renderer refresh and use conservative point decimation.");
     log::info("Profiler reports drawScene call cadence and wall duration, plus opt-in subsystem elapsed-time samples and a one-shot object-composition inventory. It does not claim GPU time or guaranteed display-present FPS.");
+    log::info("Optional ground, midground, background-effect and attempts-counter reductions are applied after PlayLayer enter-transition; trigger requests are filtered only for the selected visual layers.");
     log::info("PlayLayer construction and Cocos scheduler bookkeeping are left to the game. Gameplay update, trigger execution, collision, physics and input loops are preserved. Active gameplay objects still require CPU/memory even when secondary visuals are removed.");
 }

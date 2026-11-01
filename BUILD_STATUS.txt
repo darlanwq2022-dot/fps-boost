@@ -1,18 +1,22 @@
-GD FPS Core v0.9.2 — source validation
+GD FPS Core v0.9.3 — source validation
 
 Target: Windows x64, Geometry Dash 2.2081, Geode 5.11.2, C++23.
 
-Validated in this packaging environment:
+Implemented in this source package:
+- Four additional independent scene/UI reduction settings: ground, midground, background effects, attempts counter.
+- Scene reductions applied after PlayLayer::onEnterTransitionDidFinish.
+- Ground/midground/background-effect visibility requests are filtered only when the corresponding setting is enabled.
+- Native gameplay object, physics, collision, trigger and input paths remain intact.
+- Wave Trail remains enabled.
+
+Static validation performed after packaging:
 - mod.json parses as JSON.
-- All getSettingValue keys are declared in mod.json.
-- C++ delimiter balance passes a lexical scan.
-- One-shot object inventory only reads GameObject flags and visibility; it does not mutate gameplay state.
-- Experimental registerVirtual/GameObject::visit hook removed because Geode docs mark this inherited-virtual mechanism as not yet supported.
-- ZIP integrity checked after packaging.
+- Every getSettingValue key in main.cpp is declared in mod.json.
+- C++ delimiters pass a lexical balance scan.
+- All newly used PlayLayer virtual methods are present in Geode 2.2081 bindings.
+- ZIP integrity checked.
 
-Not validated here:
-- Full CMake/Ninja build against Geode SDK (GEODE_SDK is not installed in this environment).
-- In-game visual compatibility/performance.
-- Any FPS gain from the new object inventory (it is diagnostic only).
-
-Next validation: build using Geode SDK 5.11.2 and test with profiling off for baseline; enable object composition only for a one-shot diagnostic run.
+Not validated in this environment:
+- Full CMake/Ninja build against Geode SDK 5.11.2 (SDK unavailable here).
+- Runtime behavior on every level.
+- Actual FPS gains; benchmark each setting with repeatable A/B runs.

@@ -1,22 +1,26 @@
-# Optimization Roadmap
+# Optimization Roadmap — v0.9.3
 
-## Current baseline (v0.9.2)
-- Visual reduction: particle suppression, shader-layer update suppression, glow/shine/flash and secondary effects, native Extra LDM, optional decoration hiding.
-- Profiling: drawScene cadence/wall duration, update/particle/visibility/Wave Trail/setup/parser timers, one-shot object composition inventory.
-- Wave Trail is preserved with conservative point thinning; no default renderer-frame skipping.
+## Shipped
+- Aggressive optional suppression of supported particles and secondary effects.
+- Native Extra LDM and optional hiding of decoration-only objects.
+- Optional scene reductions for ground, midground, animated background effects and attempts HUD.
+- Optional subsystem profiler and one-shot object inventory.
+- Conservative Wave Trail sampling; Wave Trail remains visible.
 
-## Bismuth ideas under research
-Bismuth's changelog identifies shader-sprite optimization, separate batch nodes and index culling. Its object batching uses Z layer, spritesheet and blending as render-state keys. These are renderer-level optimizations and cannot safely be transplanted as isolated snippets.
+## Next high-value research targets
+1. Measure `PlayLayer::updateVisibility` and object-update cost on object-heavy levels.
+2. Determine whether a supported spatial index can accelerate visibility without stale results from move/rotate/follow triggers.
+3. Investigate renderer batching only for sprites with identical Z order, texture atlas, blend mode and shader state.
+4. Profile allocations before considering pools; Cocos reference counting makes unsafe pooling a crash risk.
+5. Investigate shader-state caching only where trigger-driven shader changes remain correct.
 
-1. **Object/index analysis:** correlate level object composition with `PlayLayer::updateVisibility` and update timings. Build a spatial index only if a supported, low-overhead hook and correct invalidation strategy are identified.
-2. **Safe culling:** evaluate whether native visibility already does enough; any new culling must account for child visuals, move/rotate/follow triggers, camera transforms and objects entering the viewport.
-3. **Batching:** investigate grouping only where atlas, Z order, blend mode, shader and animation semantics are identical. Preserve the original renderer as fallback.
-4. **Shader optimization:** cache/reuse shader state only after confirming Geode/Cocos APIs and trigger-driven shader changes. Never globally skip shader work if it changes visible gameplay feedback.
-5. **Wave Trail:** profile first; a custom ring buffer/renderer requires an exact compatibility layer for streak geometry and should not be approximated by deleting points aggressively.
-6. **Memory:** instrument allocations before introducing pools; pooling objects with Cocos reference counting can cause use-after-free and stale state.
+## Do not ship without proof
+- Do not remove active gameplay objects from engine lists.
+- Do not skip trigger, collision, physics, player or input updates.
+- Do not override inherited `visit` using unsupported virtual-registration paths.
+- Do not claim GPU FPS from `drawScene` cadence.
 
 ## Acceptance criteria
-- Full Windows Geode 5.11.2 / GD 2.2081 CI build succeeds.
-- Three repeatable A/B runs show a measurable improvement in average and tail frametime.
-- No incorrect object positions, Z-order changes, disappearing triggers, collision changes, missed inputs or Wave Trail regressions.
-- Feature is optional and can be disabled per user profile until broad level testing is complete.
+- Full Windows build with the exact target Geode SDK succeeds.
+- Three repeatable A/B runs per setting show better average and tail frametime.
+- No incorrect Z order, missing trigger visuals that convey gameplay, disappearing objects, input loss, collision changes or Wave Trail regressions.

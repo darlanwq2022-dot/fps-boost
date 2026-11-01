@@ -5,10 +5,64 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.9.2",
+  "version": "v0.9.4",
   "developer": "GD FPS Core contributors",
-  "description": "Bismuth research build: accurate frame-cadence and 1% low reporting, configurable subsystem profiling, one-shot read-only object composition inventory, and balanced Wave Trail defaults. Retains established visual reductions; does not install experimental renderer hooks.",
+  "description": "Extreme performance build: presets (Balanced/Extreme/Insane), scene/layer reductions, optional experimental visibility and HUD update skipping, optional Windows process priority. Native renderer, physics, triggers, collision, inputs and Wave Trail are preserved.",
   "settings": {
+    "preset-header": {
+      "type": "title",
+      "name": "PRESET (START HERE)",
+      "description": "One-click profiles. 'Custom' uses the individual toggles below exactly as set. The other presets override the toggles at load time."
+    },
+    "performance-preset": {
+      "type": "string",
+      "name": "Performance preset",
+      "description": "Custom = your toggles. Balanced = keeps ground/midground/decoration/attempts visible, drops effects. Extreme = all visual reductions on (previous default). Insane = Extreme + experimental visibility/HUD skipping + high process priority. Requires restart.",
+      "default": "Custom",
+      "one-of": [
+        "Custom",
+        "Balanced",
+        "Extreme",
+        "Insane"
+      ],
+      "requires-restart": true
+    },
+    "engine-header": {
+      "type": "title",
+      "name": "ENGINE / SMART SKIP (EXPERIMENTAL)",
+      "description": "Skips cosmetic work on some frames. Off by default in Custom. Gameplay objects, triggers, collision, physics and input still run every frame; only visibility bookkeeping and HUD refresh are thinned."
+    },
+    "visibility-update-step": {
+      "type": "int",
+      "name": "Visibility update step (EXPERIMENTAL)",
+      "description": "Runs the native PlayLayer visibility pass once every N frames (1 = every frame, native). Forced on level reset. Higher values can cut CPU cost on object-heavy levels but may cause brief object pop-in at high speed. Test per level.",
+      "default": 1,
+      "min": 1,
+      "max": 4,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "progress-update-step": {
+      "type": "int",
+      "name": "Progress bar/percent update step",
+      "description": "Refreshes the progress bar/percentage once every N frames (1 = native). Purely cosmetic HUD work.",
+      "default": 1,
+      "min": 1,
+      "max": 8,
+      "control": {
+        "slider": true
+      },
+      "requires-restart": true
+    },
+    "high-process-priority": {
+      "type": "bool",
+      "name": "Above-normal process priority (Windows)",
+      "description": "Asks Windows to schedule Geometry Dash with Above Normal priority. Can help on PCs with background load; no effect on an idle PC. Does not change game logic.",
+      "default": false,
+      "requires-restart": true
+    },
     "perf-header": {
       "type": "title",
       "name": "Performance Profiler",
@@ -337,7 +391,35 @@
     "scene-header": {
       "type": "title",
       "name": "SCENE / LAYER REDUCTION",
-      "description": "Additional optional reductions for background, ground and midground art. Ground and midground are off by default because they can affect visual readability."
+      "description": "Additional visual reductions for ground, midground, background effects and attempts UI. These can reduce overdraw/draw work but intentionally remove visual information; each control is independent."
+    },
+    "hide-ground-layer": {
+      "type": "bool",
+      "name": "Hide ground layer",
+      "description": "Forces the gameplay ground layer off after PlayLayer finishes entering and prevents later visual toggles from showing it. Visual-only; does not alter collision geometry or player physics. May reduce a small amount of draw/overdraw work.",
+      "default": true,
+      "requires-restart": true
+    },
+    "hide-midground-layer": {
+      "type": "bool",
+      "name": "Hide midground layer",
+      "description": "Forces the gameplay midground layer off after PlayLayer finishes entering and prevents later visual toggles from showing it. Visual-only; does not alter triggers or physics. May reduce draw/overdraw work.",
+      "default": true,
+      "requires-restart": true
+    },
+    "disable-background-effects": {
+      "type": "bool",
+      "name": "Disable background effects",
+      "description": "Disables the separate animated background-effect layer, not the base background. Visual-only; can reduce effect rendering and animation work.",
+      "default": true,
+      "requires-restart": true
+    },
+    "hide-attempts-counter": {
+      "type": "bool",
+      "name": "Hide attempts counter",
+      "description": "Keeps the attempts counter hidden in gameplay. UI-only reduction; expected FPS impact is small, but removes an unnecessary HUD element for an extreme-visibility profile.",
+      "default": true,
+      "requires-restart": true
     }
   }
 }
