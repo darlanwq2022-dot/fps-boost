@@ -961,9 +961,8 @@ class $modify(GDFPSCorePlayLayer, PlayLayer) {
         PlayLayer::toggleMGVisibility(g_hideMidgroundLayer ? false : visible);
     }
 
-    void toggleBGEffectVisibility(bool enabled) {
-        PlayLayer::toggleBGEffectVisibility(g_disableBackgroundEffects ? false : enabled);
-    }
+    // toggleBGEffectVisibility is inline in GD 2.2081 and cannot be hooked.
+    // It is only called (not filtered) from onEnterTransitionDidFinish.
 
     void toggleHideAttempts(bool hide) {
         PlayLayer::toggleHideAttempts(g_hideAttemptsCounter ? true : hide);
