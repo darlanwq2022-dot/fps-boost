@@ -1,23 +1,22 @@
-# GD FPS Core optimization roadmap
+# Optimization Roadmap
 
-## Implemented and retained
+## Current baseline (v0.9.2)
+- Visual reduction: particle suppression, shader-layer update suppression, glow/shine/flash and secondary effects, native Extra LDM, optional decoration hiding.
+- Profiling: drawScene cadence/wall duration, update/particle/visibility/Wave Trail/setup/parser timers, one-shot object composition inventory.
+- Wave Trail is preserved with conservative point thinning; no default renderer-frame skipping.
 
-- Native Extra LDM is forced for gameplay parsing. The engine can omit High Detail objects while constructing its normal object set.
-- Decoration-only nodes are hidden during gameplay. This reduces rendering/overdraw, but those nodes can remain allocated and may still be touched by game-side loops.
-- Supported optional particle emitters/triggers and secondary visual effects are suppressed.
-- Wave Trail samples are simplified within configurable limits; its renderer is no longer skipped by default.
-- Profiler timings and frame-cadence summaries are opt-in.
+## Bismuth ideas under research
+Bismuth's changelog identifies shader-sprite optimization, separate batch nodes and index culling. Its object batching uses Z layer, spritesheet and blending as render-state keys. These are renderer-level optimizations and cannot safely be transplanted as isolated snippets.
 
-## Candidate work that needs measurement and/or deeper engine integration
+1. **Object/index analysis:** correlate level object composition with `PlayLayer::updateVisibility` and update timings. Build a spatial index only if a supported, low-overhead hook and correct invalidation strategy are identified.
+2. **Safe culling:** evaluate whether native visibility already does enough; any new culling must account for child visuals, move/rotate/follow triggers, camera transforms and objects entering the viewport.
+3. **Batching:** investigate grouping only where atlas, Z order, blend mode, shader and animation semantics are identical. Preserve the original renderer as fallback.
+4. **Shader optimization:** cache/reuse shader state only after confirming Geode/Cocos APIs and trigger-driven shader changes. Never globally skip shader work if it changes visible gameplay feedback.
+5. **Wave Trail:** profile first; a custom ring buffer/renderer requires an exact compatibility layer for streak geometry and should not be approximated by deleting points aggressively.
+6. **Memory:** instrument allocations before introducing pools; pooling objects with Cocos reference counting can cause use-after-free and stale state.
 
-1. Spatial partition for visibility checks. Must be proven to avoid missing camera movement, zoom, portals and dual-camera behavior.
-2. Custom static sprite batching. Requires preserving texture/blend/z-order and invalidation semantics; a naive batch can change visuals or increase GPU cost.
-3. More efficient Wave Trail storage. Needs the exact HardStreak ownership/lifetime model before replacing the engine's point container.
-4. Object-update culling. The current bindings identify some update methods as inline or part of central engine loops; hiding a node alone does not skip game logic.
-5. Texture/asset deduplication and atlas changes. Needs resource lifetime and renderer validation.
-6. GPU timer queries. Requires a graphics-backend-specific implementation and must report unavailable on unsupported backends.
-7. Memory pools and allocator changes. Must not replace the game's allocator globally without profiling evidence and lifetime audits.
-
-## Acceptance rule
-
-Every optimization must include: (a) a specific hot path measured before, (b) an isolated implementation, (c) A/B timings on the same level and hardware, (d) visual/gameplay regression checks, and (e) a documented fallback. If it cannot demonstrate a repeatable improvement, it stays experimental or is removed.
+## Acceptance criteria
+- Full Windows Geode 5.11.2 / GD 2.2081 CI build succeeds.
+- Three repeatable A/B runs show a measurable improvement in average and tail frametime.
+- No incorrect object positions, Z-order changes, disappearing triggers, collision changes, missed inputs or Wave Trail regressions.
+- Feature is optional and can be disabled per user profile until broad level testing is complete.

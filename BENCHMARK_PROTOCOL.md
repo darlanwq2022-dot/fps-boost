@@ -1,48 +1,21 @@
-# GD FPS Core benchmark protocol
+# GD FPS Core — Benchmark Protocol
 
-This protocol is used to distinguish real performance changes from settings, timing noise, and visual-only changes.
+## Baseline setup
+1. Use the same Geometry Dash version, Geode version, resolution, fullscreen/windowed mode, FPS limit, and graphics driver.
+2. Use one repeatable level and the same start position or section.
+3. Warm up the level once, then collect at least three runs with the profiler disabled for normal performance numbers.
+4. Repeat three runs with only the specific optimization under test enabled.
+5. Compare median average cadence, p95, p99, 1% low estimate, and `drawScene` wall duration. Compare each run separately; do not combine data from different scenes.
 
-## Keep the test controlled
+## Diagnostic runs
+- Enable `frame-monitor` for frame-call cadence and wall duration.
+- Enable one or two subsystem timers at a time. They are inclusive and can overlap; do not add them together.
+- Set subsystem sampling interval to 4 or 8 for lower profiler overhead.
+- Enable `profile-object-composition` only for one diagnostic run. It scans the object array once per PlayLayer and logs total/visible/decoration/trigger/High Detail counts and scan duration. Turn it back off for FPS benchmarks.
 
-For every A/B run, keep these identical:
-
-- Exact same level and the same section/start position.
-- Same game version, resolution, fullscreen/window mode, FPS target and VSync setting.
-- Same graphics/Low Detail settings and same set of other Geode mods.
-- Same route and approximately the same duration. Prefer a repeatable StartPos or replayable section.
-- Same background applications and recording/overlay setup.
-
-Warm up the level for 15 seconds, then capture at least three runs of 30 seconds. Compare the median of the three run summaries, not one best result.
-
-## Pass A: baseline
-
-1. Enable `Frame cadence monitor`.
-2. Set `Report interval` to 600 frames.
-3. Leave all subsystem profile toggles disabled.
-4. Run the chosen section and save the Geode log.
-
-## Pass B: subsystem diagnosis
-
-Enable only one detailed timing option at a time. Use `Subsystem sampling interval = 4` initially. Use `1` only when a short-lived hot spot is being missed; use `8` or `16` when the diagnostic itself affects results.
-
-- Main game update and PlayerObject update are inclusive/nested measurements; do not add them together.
-- `drawScene` wall duration can include blocking/waiting and is not a GPU timestamp.
-- Particle simulation cannot be diagnosed while global particle suppression is active, because the mod intentionally bypasses the original particle update in that mode. To measure the unmodified particle path, temporarily disable particle suppression and restart.
-- Object parsing and custom setup are most useful during level load; capture the transition/loading period as well as gameplay.
-
-## Pass C: one optimization at a time
-
-Start from the baseline and enable exactly one optimization setting per A/B comparison. This identifies which setting changes frame cadence or wall time. Only after individual measurements should settings be combined.
-
-## Read the output correctly
-
-- Average call interval is converted to estimated `drawScene` calls per second. It is not guaranteed display-present FPS.
-- p95/p99/max call intervals show stutter and worst-frame behavior.
-- 1% low is the inverse of the average duration of the slowest ceil(1%) of samples in that report window.
-- Counts above 16.67 ms, 8.33 ms and 4.17 ms show how frequently the sample misses 60, 120 and 240 Hz frame budgets respectively.
-- `drawScene` wall duration is a wall-clock measurement. It is not pure CPU time and is not GPU time.
-- Detailed subsystem times use sampled frames and can overlap. They are diagnostic scopes, not additive totals.
-
-## Limits
-
-A Geode-level timer cannot guarantee hardware-level GPU timings without a supported graphics API timer-query path. This release does not claim to measure GPU execution, exact monitor presentation, or prove a 10,000-FPS result. For a true GPU bottleneck diagnosis, use an external graphics profiler supported by the GPU/driver.
+## Interpretation
+- `drawScene` call cadence is not a guaranteed display-present FPS measurement and is not a GPU timestamp.
+- A high object count does not prove that object updates are the bottleneck. Use visibility/update/parse timings.
+- A high decoration count makes culling a candidate, not a proven win.
+- Accept an optimization only if it improves repeatable frame metrics across several levels and does not cause visual or gameplay regressions.
+- Test at least one object-heavy level, one trigger-heavy level, and one level with heavy shader/blending effects before enabling renderer-related changes globally.

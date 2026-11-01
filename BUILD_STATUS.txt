@@ -1,11 +1,18 @@
-GD FPS Core v0.9.0 — source validation status
+GD FPS Core v0.9.2 — source validation
 
-- mod.json: parsed successfully with Python json parser.
-- All 39 getSettingValue references match declared settings.
-- C++ lexical delimiter check: passed.
-- Synthetic 1% low math check: passed (118 x 1 ms, 1 x 2 ms, 1 x 4 ms -> slowest-1%-average estimate 333.3 FPS).
-- ZIP: passed `unzip -t` integrity check.
-- C++ full compile: NOT RUN. GEODE_SDK is not available in this environment.
-- No .geode binary is included.
-- Target in metadata: Geometry Dash Windows 2.2081, Geode 5.11.2.
-- Timing metrics: drawScene call cadence and wall duration are estimates; no GPU timestamp queries or guaranteed display-present FPS are claimed.
+Target: Windows x64, Geometry Dash 2.2081, Geode 5.11.2, C++23.
+
+Validated in this packaging environment:
+- mod.json parses as JSON.
+- All getSettingValue keys are declared in mod.json.
+- C++ delimiter balance passes a lexical scan.
+- One-shot object inventory only reads GameObject flags and visibility; it does not mutate gameplay state.
+- Experimental registerVirtual/GameObject::visit hook removed because Geode docs mark this inherited-virtual mechanism as not yet supported.
+- ZIP integrity checked after packaging.
+
+Not validated here:
+- Full CMake/Ninja build against Geode SDK (GEODE_SDK is not installed in this environment).
+- In-game visual compatibility/performance.
+- Any FPS gain from the new object inventory (it is diagnostic only).
+
+Next validation: build using Geode SDK 5.11.2 and test with profiling off for baseline; enable object composition only for a one-shot diagnostic run.

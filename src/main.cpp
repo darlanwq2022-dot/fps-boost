@@ -70,6 +70,10 @@ namespace {
     bool g_profileWaveTrail = false;
     bool g_profileObjectSetup = false;
     bool g_profileObjectParsing = false;
+    bool g_profileObjectComposition = false;
+    PlayLayer* g_compositionProfiledLayer = nullptr;
+
+
     std::size_t g_reportInterval = 120;
     std::size_t g_profileSampleEveryNFrames = 4;
     std::uint64_t g_frameSequence = 0;
@@ -448,6 +452,7 @@ namespace {
         g_profileWaveTrail = mod->getSettingValue<bool>("profile-wave-trail");
         g_profileObjectSetup = mod->getSettingValue<bool>("profile-object-setup");
         g_profileObjectParsing = mod->getSettingValue<bool>("profile-object-parsing");
+        g_profileObjectComposition = mod->getSettingValue<bool>("profile-object-composition");
         auto interval = mod->getSettingValue<int64_t>("report-interval");
         g_reportInterval = static_cast<std::size_t>(std::clamp<int64_t>(interval, 60, static_cast<int64_t>(kMaxWindow)));
         auto sampleEvery = mod->getSettingValue<int64_t>("profile-sampling-interval");
@@ -455,7 +460,7 @@ namespace {
     }
 
     bool profilingEnabled() {
-        return g_frameMonitorEnabled || g_profileGameUpdate || g_profilePlayerUpdate || g_profileParticleUpdate || g_profileVisibilityUpdate || g_profileWaveTrail || g_profileObjectSetup || g_profileObjectParsing;
+        return g_frameMonitorEnabled || g_profileGameUpdate || g_profilePlayerUpdate || g_profileParticleUpdate || g_profileVisibilityUpdate || g_profileWaveTrail || g_profileObjectSetup || g_profileObjectParsing || g_profileObjectComposition;
     }
 }
 
@@ -866,13 +871,41 @@ class $modify(GDFPSCorePlayLayer, PlayLayer) {
     void updateVisibility(float dt) {
         if (!g_profileVisibilityUpdate || !g_currentFrame.profileSampled) {
             PlayLayer::updateVisibility(dt);
-            return;
+        } else {
+            const auto start = Clock::now();
+            PlayLayer::updateVisibility(dt);
+            g_currentFrame.visibilityUpdateMs += std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+            if (m_objects) {
+                g_currentFrame.levelObjectCount = static_cast<std::uint32_t>(m_objects->count());
+            }
         }
-        const auto start = Clock::now();
-        PlayLayer::updateVisibility(dt);
-        g_currentFrame.visibilityUpdateMs += std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-        if (m_objects) {
-            g_currentFrame.levelObjectCount = static_cast<std::uint32_t>(m_objects->count());
+
+        // Optional one-shot read-only inventory for Bismuth renderer research.
+        // It uses the already-hooked PlayLayer updateVisibility entry point and
+        // never alters object visibility, sorting, render order, or gameplay.
+        if (g_profileObjectComposition && this != g_compositionProfiledLayer && m_objects) {
+            const auto objectCount = m_objects->count();
+            if (objectCount > 0) {
+                const auto scanStart = Clock::now();
+                std::uint32_t decorations = 0;
+                std::uint32_t triggers = 0;
+                std::uint32_t highDetail = 0;
+                std::uint32_t visible = 0;
+                for (unsigned int i = 0; i < objectCount; ++i) {
+                    auto* object = static_cast<GameObject*>(m_objects->objectAtIndex(i));
+                    if (!object) continue;
+                    if (object->m_isDecoration || object->m_isDecoration2) ++decorations;
+                    if (object->m_isTrigger) ++triggers;
+                    if (object->m_isHighDetail) ++highDetail;
+                    if (object->isVisible()) ++visible;
+                }
+                const double scanMs = std::chrono::duration<double, std::milli>(Clock::now() - scanStart).count();
+                g_compositionProfiledLayer = this;
+                log::info(
+                    "[GD FPS Core] Bismuth preflight object inventory: total {} | visible {} | decoration-marked {} | triggers {} | high-detail {} | one-shot scan {:.3f} ms. Read-only; no objects were culled or modified.",
+                    objectCount, visible, decorations, triggers, highDetail, scanMs
+                );
+            }
         }
     }
 
@@ -899,11 +932,11 @@ class $modify(GDFPSCoreEffectObject, EffectGameObject) {
 
 $on_mod(Loaded) {
     loadSettings();
-    log::info("GD FPS Core v0.9.0 Profiling Engine Foundation loaded.");
+    log::info("GD FPS Core v0.9.2 Bismuth Research Build loaded.");
     log::info("ULTRA profile: supported particle triggers and emitters, shader-layer animation, and player/object secondary visuals are suppressed while preserving the engine particle bookkeeping and node lifecycle.");
     log::info("Object particle factory calls preserve their original return values; optional emitters are stopped and hidden after creation, and the particle update hook avoids simulating suppressed effects.");
     log::info("Native Extra LDM filters High Detail objects before runtime-list insertion; gameplay decorations are hidden without touching trigger objects.");
-    log::info("Wave Trail stays enabled. Default settings now preserve every renderer refresh and use lighter point decimation; aggressive thinning remains configurable.");
-    log::info("Profiler reports drawScene call cadence and wall duration, plus opt-in subsystem elapsed-time samples. It does not claim GPU time or guaranteed display-present FPS.");
+    log::info("Wave Trail stays enabled. Default settings preserve every renderer refresh and use conservative point decimation.");
+    log::info("Profiler reports drawScene call cadence and wall duration, plus opt-in subsystem elapsed-time samples and a one-shot object-composition inventory. It does not claim GPU time or guaranteed display-present FPS.");
     log::info("PlayLayer construction and Cocos scheduler bookkeeping are left to the game. Gameplay update, trigger execution, collision, physics and input loops are preserved. Active gameplay objects still require CPU/memory even when secondary visuals are removed.");
 }

@@ -5,9 +5,9 @@
   },
   "id": "dev.gdfps.core",
   "name": "GD FPS Core",
-  "version": "v0.9.1",
+  "version": "v0.9.2",
   "developer": "GD FPS Core contributors",
-  "description": "Profiling Engine Build Hotfix: more accurate frame-cadence and 1% low reporting, configurable low-overhead subsystem sampling, truthful timing labels, and balanced Wave Trail defaults. Retains established visual reductions.",
+  "description": "Bismuth research build: accurate frame-cadence and 1% low reporting, configurable subsystem profiling, one-shot read-only object composition inventory, and balanced Wave Trail defaults. Retains established visual reductions; does not install experimental renderer hooks.",
   "settings": {
     "perf-header": {
       "type": "title",
@@ -67,6 +67,13 @@
       "type": "bool",
       "name": "Profile object parser",
       "description": "Measures elapsed time in GameObject::objectFromVector on sampled frames. Object parsing may happen during level load.",
+      "default": false,
+      "requires-restart": true
+    },
+    "profile-object-composition": {
+      "type": "bool",
+      "name": "One-shot level object inventory",
+      "description": "When a PlayLayer visibility update occurs, counts total, visible, decoration-marked, trigger and High Detail objects once per level and logs scan time. Read-only diagnostic to estimate whether future renderer/index optimization is worthwhile; it does not change gameplay or rendering.",
       "default": false,
       "requires-restart": true
     },
